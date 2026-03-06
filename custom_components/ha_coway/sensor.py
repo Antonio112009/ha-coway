@@ -21,6 +21,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -214,11 +215,21 @@ async def async_setup_entry(
     """Set up Coway sensor entities."""
     coordinator = entry.runtime_data
     entities: list[CowaySensor] = []
+    valid_unique_ids: set[str] = set()
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in _get_sensor_descriptions(purifier):
+            unique_id = f"{device_id}_{description.key}"
             if description.value_fn(purifier) is None:
                 continue
+            valid_unique_ids.add(unique_id)
             entities.append(CowaySensor(coordinator, device_id, description))
+
+    # Remove stale sensor entities that are no longer provided
+    ent_reg = er.async_get(hass)
+    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent_entry.domain == "sensor" and ent_entry.unique_id not in valid_unique_ids:
+            ent_reg.async_remove(ent_entry.entity_id)
+
     async_add_entities(entities)
 
 

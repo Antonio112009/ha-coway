@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import COMMAND_REFRESH_DELAY
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import LIGHT_MODE_MODELS, MODEL_250S
 from .entity import CowayEntity
@@ -116,6 +118,8 @@ class CowaySwitch(CowayEntity, SwitchEntity):
         )
         self._optimistic_state = True
         self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch."""
@@ -124,3 +128,5 @@ class CowaySwitch(CowayEntity, SwitchEntity):
         )
         self._optimistic_state = False
         self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
+        await self.coordinator.async_request_refresh()

@@ -71,9 +71,9 @@ This project is licensed under the MIT License. See `LICENSE`.
 
 ## Acknowledgements
 
-This integration is built on top of the work by **Dr. Drinovac** ([@RobertD502](https://github.com/RobertD502)), who created the original [cowayaio](https://github.com/RobertD502/cowayaio) Python library and the [IoCare Home Assistant integration](https://github.com/RobertD502/home-assistant-iocare) for Coway air purifiers.
+This integration was developed independently from scratch, but was inspired by the work of **Dr. Drinovac** ([@RobertD502](https://github.com/RobertD502)) and his [IoCare Home Assistant integration](https://github.com/RobertD502/home-assistant-iocare). While both integrations share the same idea of bringing Coway purifiers to Home Assistant, they are built on different libraries — this one uses [pycoway](https://github.com/Antonio112009/pycoway), while the original uses [cowayaio](https://github.com/RobertD502/cowayaio).
 
-***All proceeds go towards helping a local animal rescue.***
+Robert collects donations for a local animal rescue. If you'd like to support his work:
 
 <a href="https://www.buymeacoffee.com/RobertD502" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="100" width="424"></a>
 <a href="https://liberapay.com/RobertD502/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg" height="100" width="300"></a>

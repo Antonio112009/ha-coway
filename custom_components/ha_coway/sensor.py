@@ -26,6 +26,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .entity import CowayEntity
 
+AQ_GRADE_MAP = {
+    1: "good",
+    2: "moderate",
+    3: "unhealthy",
+    4: "very_unhealthy",
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class CowaySensorEntityDescription(SensorEntityDescription):
@@ -110,6 +117,13 @@ SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ILLUMINANCE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda p: p.lux_sensor,
+    ),
+    CowaySensorEntityDescription(
+        key="indoor_aq",
+        translation_key="indoor_aq",
+        device_class=SensorDeviceClass.ENUM,
+        options=["good", "moderate", "unhealthy", "very_unhealthy"],
+        value_fn=lambda p: AQ_GRADE_MAP.get(p.aq_grade),
     ),
 )
 

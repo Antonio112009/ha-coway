@@ -23,6 +23,18 @@
       "already_configured": "Account is already configured"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "polling_interval": "Polling interval (seconds)"
+        },
+        "data_description": {
+          "polling_interval": "How often to poll the Coway API for updates. Lower values give faster updates but increase API load. Default is 60 seconds."
+        }
+      }
+    }
+  },
   "exceptions": {
     "auth_failed": {
       "message": "Authentication failed. Please re-configure the integration."

@@ -16,6 +16,7 @@ from .entity import CowayEntity
 
 TIMER_OPTIONS = ["off", "60", "120", "240", "480"]
 SENSITIVITY_OPTIONS = ["sensitive", "moderate", "insensitive"]
+PRE_FILTER_FREQUENCY_OPTIONS = ["2", "3", "4"]
 _SENSITIVITY_TO_API = {"sensitive": "1", "moderate": "2", "insensitive": "3"}
 _API_TO_SENSITIVITY = {1: "sensitive", 2: "moderate", 3: "insensitive"}
 
@@ -56,9 +57,22 @@ SENSITIVITY_DESCRIPTION = CowaySelectEntityDescription(
     ),
 )
 
+PRE_FILTER_FREQUENCY_DESCRIPTION = CowaySelectEntityDescription(
+    key="pre_filter_frequency",
+    translation_key="pre_filter_frequency",
+    options=PRE_FILTER_FREQUENCY_OPTIONS,
+    current_fn=lambda p: (
+        str(p.pre_filter_change_frequency)
+        if p.pre_filter_change_frequency is not None
+        else None
+    ),
+    select_fn=lambda c, a, v: c.client.async_change_prefilter_setting(a, int(v)),
+)
+
 SELECT_DESCRIPTIONS: tuple[CowaySelectEntityDescription, ...] = (
     TIMER_DESCRIPTION,
     SENSITIVITY_DESCRIPTION,
+    PRE_FILTER_FREQUENCY_DESCRIPTION,
 )
 
 

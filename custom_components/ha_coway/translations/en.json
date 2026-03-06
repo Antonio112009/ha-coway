@@ -89,6 +89,14 @@
           "moderate": "Moderate",
           "insensitive": "Insensitive"
         }
+      },
+      "pre_filter_frequency": {
+        "name": "Pre-filter wash frequency",
+        "state": {
+          "2": "2 weeks",
+          "3": "3 weeks",
+          "4": "4 weeks"
+        }
       }
     },
     "binary_sensor": {

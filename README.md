@@ -16,7 +16,7 @@ This repository is structured as a HACS custom integration:
 
 ## Manual installation
 
-1. Copy `custom_components/coway` to your Home Assistant `config/custom_components/` directory.
+1. Copy `custom_components/ha_coway` to your Home Assistant `config/custom_components/` directory.
 2. Restart Home Assistant.
 
 ## Configuration

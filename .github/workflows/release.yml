@@ -50,7 +50,7 @@ jobs:
         run: |
           head_message=$(git log -1 --format=%s main)
           if printf '%s\n' "$head_message" | grep -qE '^Bump version to '; then
-            version=$(jq -r '.version' custom_components/coway/manifest.json)
+            version=$(jq -r '.version' custom_components/ha_coway/manifest.json)
             echo "released=true" >> "$GITHUB_OUTPUT"
             echo "version=${version}" >> "$GITHUB_OUTPUT"
             echo "Main already points at release version ${version}."
@@ -79,7 +79,7 @@ jobs:
             exit 0
           fi
 
-          FILE="custom_components/coway/manifest.json"
+          FILE="custom_components/ha_coway/manifest.json"
           CURRENT=$(jq -r '.version' "$FILE")
           IFS='.' read -r major minor patch <<< "$CURRENT"
 
@@ -102,7 +102,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/coway/manifest.json
+          git add custom_components/ha_coway/manifest.json
           git commit -m "Bump version to ${{ steps.version.outputs.version }}"
           git tag "v${{ steps.version.outputs.version }}"
           git push origin main "refs/tags/v${{ steps.version.outputs.version }}"

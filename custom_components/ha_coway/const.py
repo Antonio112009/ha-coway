@@ -2,7 +2,7 @@
 
 from homeassistant.const import Platform
 
-DOMAIN = "coway"
+DOMAIN = "ha_coway"
 
 CONF_SKIP_PASSWORD_CHANGE = "skip_password_change"
 

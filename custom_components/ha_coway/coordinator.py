@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -45,6 +46,7 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
         self.client = CowayClient(
             entry.data[CONF_USERNAME],
             entry.data[CONF_PASSWORD],
+            session=async_create_clientsession(hass),
             skip_password_change=entry.data.get(CONF_SKIP_PASSWORD_CHANGE, True),
         )
 
@@ -66,6 +68,5 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
             raise UpdateFailed(f"Error fetching purifier data: {err}") from err
 
     async def async_shutdown(self) -> None:
-        """Close the API client session."""
+        """Shut down the coordinator."""
         await super().async_shutdown()
-        await self.client.close()

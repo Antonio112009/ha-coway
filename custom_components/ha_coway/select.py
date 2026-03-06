@@ -34,7 +34,9 @@ TIMER_DESCRIPTION = CowaySelectEntityDescription(
     key="timer",
     translation_key="timer",
     options=TIMER_OPTIONS,
-    current_fn=lambda p: p.timer if p.timer is not None else None,
+    current_fn=lambda p: (
+        ("off" if p.timer == "0" else p.timer) if p.timer is not None else None
+    ),
     select_fn=lambda c, a, v: c.client.async_set_timer(
         a, time="0" if v == "off" else v
     ),

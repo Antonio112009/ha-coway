@@ -1,0 +1,101 @@
+"""Select platform for the Coway integration."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+
+from pycoway import CowayPurifier, DeviceAttributes
+
+from homeassistant.components.select import SelectEntity, SelectEntityDescription
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .entity import CowayEntity
+
+TIMER_OPTIONS = ["off", "60", "120", "240", "480"]
+SENSITIVITY_OPTIONS = ["sensitive", "moderate", "insensitive"]
+_SENSITIVITY_TO_API = {"sensitive": "1", "moderate": "2", "insensitive": "3"}
+_API_TO_SENSITIVITY = {1: "sensitive", 2: "moderate", 3: "insensitive"}
+
+
+@dataclass(frozen=True, kw_only=True)
+class CowaySelectEntityDescription(SelectEntityDescription):
+    """Describe a Coway select entity."""
+
+    current_fn: Callable[[CowayPurifier], str | None]
+    select_fn: Callable[
+        [CowayDataUpdateCoordinator, DeviceAttributes, str], Awaitable[None]
+    ]
+
+
+TIMER_DESCRIPTION = CowaySelectEntityDescription(
+    key="timer",
+    translation_key="timer",
+    options=TIMER_OPTIONS,
+    current_fn=lambda p: p.timer if p.timer is not None else None,
+    select_fn=lambda c, a, v: c.client.async_set_timer(
+        a, time="0" if v == "off" else v
+    ),
+)
+
+SENSITIVITY_DESCRIPTION = CowaySelectEntityDescription(
+    key="sensitivity",
+    translation_key="sensitivity",
+    options=SENSITIVITY_OPTIONS,
+    current_fn=lambda p: _API_TO_SENSITIVITY.get(p.smart_mode_sensitivity)
+    if p.smart_mode_sensitivity is not None
+    else None,
+    select_fn=lambda c, a, v: c.client.async_set_smart_mode_sensitivity(
+        a, sensitivity=_SENSITIVITY_TO_API[v]
+    ),
+)
+
+SELECT_DESCRIPTIONS: tuple[CowaySelectEntityDescription, ...] = (
+    TIMER_DESCRIPTION,
+    SENSITIVITY_DESCRIPTION,
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: CowayConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Coway select entities."""
+    coordinator = entry.runtime_data
+    async_add_entities(
+        CowaySelect(coordinator, device_id, description)
+        for device_id in coordinator.data.purifiers
+        for description in SELECT_DESCRIPTIONS
+    )
+
+
+class CowaySelect(CowayEntity, SelectEntity):
+    """Representation of a Coway select."""
+
+    entity_description: CowaySelectEntityDescription
+
+    def __init__(
+        self,
+        coordinator: CowayDataUpdateCoordinator,
+        device_id: str,
+        description: CowaySelectEntityDescription,
+    ) -> None:
+        """Initialize the select."""
+        super().__init__(coordinator, device_id)
+        self.entity_description = description
+        self._attr_unique_id = f"{device_id}_{description.key}"
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the current selected option."""
+        return self.entity_description.current_fn(self.purifier)
+
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected option."""
+        await self.entity_description.select_fn(
+            self.coordinator, self.purifier.device_attr, option
+        )
+        await self.coordinator.async_request_refresh()

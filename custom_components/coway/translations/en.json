@@ -1,0 +1,100 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Coway Account",
+        "description": "Enter your Coway account credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "skip_password_change": "Skip password change prompt"
+        },
+        "data_description": {
+          "skip_password_change": "Coway requires a password change every 60 days. Enabling this lets Home Assistant continue logging in without interruption. Your password is not changed — the prompt is simply dismissed. Disable only if you want Coway to enforce the password rotation."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Account is already configured"
+    }
+  },
+  "exceptions": {
+    "auth_failed": {
+      "message": "Authentication failed. Please re-configure the integration."
+    }
+  },
+  "entity": {
+    "fan": {
+      "purifier": {
+        "name": "Purifier"
+      }
+    },
+    "sensor": {
+      "pm2_5": {
+        "name": "PM2.5"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "co2": {
+        "name": "CO\u2082"
+      },
+      "voc": {
+        "name": "VOC"
+      },
+      "aqi": {
+        "name": "Air quality index"
+      },
+      "pre_filter": {
+        "name": "Pre-filter"
+      },
+      "max2_filter": {
+        "name": "MAX2 filter"
+      },
+      "odor_filter": {
+        "name": "Odor filter"
+      },
+      "timer_remaining": {
+        "name": "Timer remaining"
+      }
+    },
+    "switch": {
+      "light": {
+        "name": "Light"
+      },
+      "button_lock": {
+        "name": "Button lock"
+      }
+    },
+    "select": {
+      "timer": {
+        "name": "Off timer",
+        "state": {
+          "off": "Off",
+          "60": "1 hour",
+          "120": "2 hours",
+          "240": "4 hours",
+          "480": "8 hours"
+        }
+      },
+      "sensitivity": {
+        "name": "Smart mode sensitivity",
+        "state": {
+          "sensitive": "Sensitive",
+          "moderate": "Moderate",
+          "insensitive": "Insensitive"
+        }
+      }
+    },
+    "binary_sensor": {
+      "network_status": {
+        "name": "Network"
+      }
+    }
+  }
+}

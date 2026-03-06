@@ -1,0 +1,102 @@
+name: Auto PR to main
+
+on:
+  push:
+    branches: [development]
+
+concurrency:
+  group: auto-pr
+  cancel-in-progress: true
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, 'Merge pull request') || !contains(github.event.head_commit.message, 'from Antonio112009/ha-coway/main') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Check for meaningful diff
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff origin/main...origin/development --quiet; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build changelog
+        if: steps.diff.outputs.has_diff == 'true'
+        id: changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_numbers=$(git log origin/main..origin/development --first-parent --format='%s' \
+            | sed -nE 's/^Merge pull request #([0-9]+).*/\1/p; s/.* \(#([0-9]+)\)$/\1/p' \
+            | awk '!seen[$0]++' \
+            | head -50)
+
+          pr_lines=""
+          if [ -n "$pr_numbers" ]; then
+            while IFS= read -r number; do
+              [ -n "$number" ] || continue
+
+              line=$(gh pr view "$number" --json number,title,author \
+                --jq '"- #\(.number) \(.title) (@\(.author.login))"' 2>/dev/null || true)
+
+              if [ -n "$line" ]; then
+                pr_lines="${pr_lines}${line}\n"
+              fi
+            done < <(printf '%s\n' "$pr_numbers")
+          fi
+
+          commit_lines=$(git log origin/main..origin/development --oneline --no-merges | head -50)
+
+          {
+            echo 'body<<CHANGELOG_EOF'
+            echo '## Changes since last release'
+            echo ''
+
+            echo '### Merged pull requests'
+            if [ -n "$pr_lines" ]; then
+              printf '%b' "$pr_lines"
+            else
+              echo '- No pull requests detected from the unreleased commit range.'
+            fi
+
+            echo ''
+            echo '### Commits'
+            if [ -n "$commit_lines" ]; then
+              printf '%s\n' "$commit_lines"
+            else
+              echo '- No non-merge commits since main.'
+            fi
+
+            echo ''
+            echo '---'
+            echo '*Auto-generated from `development` branch.*'
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR development → main
+        if: steps.diff.outputs.has_diff == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          PR_BODY: ${{ steps.changelog.outputs.body }}
+        run: |
+          existing_pr=$(gh pr list --base main --head development --state open --json number --jq '.[0].number')
+
+          if [ -n "$existing_pr" ]; then
+            echo "Updating PR #$existing_pr body with latest changelog."
+            gh pr edit "$existing_pr" --body "$PR_BODY"
+          else
+            gh pr create \
+              --base main \
+              --head development \
+              --title "Merge development into main" \
+              --body "$PR_BODY"
+          fi

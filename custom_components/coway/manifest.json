@@ -1,13 +1,13 @@
 {
   "domain": "coway",
   "name": "Coway",
-  "codeowners": ["@anton"],
+  "codeowners": ["@Antonio112009"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/anton/ha-coway",
+  "documentation": "https://github.com/Antonio112009/ha-coway",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/anton/ha-coway/issues",
+  "issue_tracker": "https://github.com/Antonio112009/ha-coway/issues",
   "loggers": ["pycoway"],
   "requirements": ["pycoway==1.6.1"],
   "version": "0.1.0"

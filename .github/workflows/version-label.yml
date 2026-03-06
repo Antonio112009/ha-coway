@@ -1,0 +1,50 @@
+name: Version label check
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+    branches: [main]
+
+concurrency:
+  group: version-label-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only development can target main
+        if: github.head_ref != 'development'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "::error::Only the 'development' branch can target 'main'. Got '${HEAD_REF}'."
+          exit 1
+
+  version-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exactly one release label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          no_release=$(echo "$LABELS" | jq '[.[] | select(. == "no-release")] | length')
+          version=$(echo "$LABELS" | jq '[.[] | select(. == "major" or . == "minor" or . == "patch")] | length')
+
+          if [ "$no_release" -ge 1 ] && [ "$version" -ge 1 ]; then
+            echo "::error::Cannot combine 'no-release' with a version label."
+            exit 1
+          fi
+
+          if [ "$no_release" -eq 1 ]; then
+            echo "Label: no-release — skipping version bump and publish."
+            exit 0
+          fi
+
+          if [ "$version" -ne 1 ]; then
+            echo "::error::PR to main must have exactly one label: major, minor, patch, or no-release."
+            exit 1
+          fi
+
+          label=$(echo "$LABELS" | jq -r '[.[] | select(. == "major" or . == "minor" or . == "patch")][0]')
+          echo "Version label found: $label"

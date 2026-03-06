@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 from typing import Any
 
@@ -13,6 +14,7 @@ from homeassistant.util.percentage import (
     ranged_value_to_percentage,
 )
 
+from .const import COMMAND_CHAIN_DELAY, COMMAND_REFRESH_DELAY
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import (
     AP_1512HHS_PRESET_MODES,
@@ -140,10 +142,16 @@ class CowayFan(CowayEntity, FanEntity):
         await self.coordinator.client.async_set_power(
             self.purifier.device_attr, is_on=True
         )
+        self.purifier.is_on = True
+        self.purifier.light_on = True
         if preset_mode is not None:
             await self.async_set_preset_mode(preset_mode)
-        elif percentage is not None:
+            return
+        if percentage is not None:
             await self.async_set_percentage(percentage)
+            return
+        self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -151,6 +159,10 @@ class CowayFan(CowayEntity, FanEntity):
         await self.coordinator.client.async_set_power(
             self.purifier.device_attr, is_on=False
         )
+        self.purifier.is_on = False
+        self.purifier.light_on = False
+        self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
         await self.coordinator.async_request_refresh()
 
     async def async_set_percentage(self, percentage: int) -> None:
@@ -159,23 +171,77 @@ class CowayFan(CowayEntity, FanEntity):
             await self.async_turn_off()
             return
         speed = math.ceil(percentage_to_ranged_value(SPEED_RANGE, percentage))
+        if not self.is_on:
+            await self.coordinator.client.async_set_power(
+                self.purifier.device_attr, is_on=True
+            )
+            self.purifier.is_on = True
+            self.purifier.light_on = True
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
         await self.coordinator.client.async_set_fan_speed(
             self.purifier.device_attr, speed=str(speed)
         )
+        self.purifier.fan_speed = speed
+        self.purifier.auto_mode = False
+        self.purifier.night_mode = False
+        self.purifier.auto_eco_mode = False
+        self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode."""
         attr = self.purifier.device_attr
         client = self.coordinator.client
+        purifier = self.purifier
+
+        if not self.is_on:
+            await client.async_set_power(attr, is_on=True)
+            purifier.is_on = True
+            purifier.light_on = True
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
+
         if preset_mode == "auto":
             await client.async_set_auto_mode(attr)
+            purifier.auto_mode = True
+            purifier.auto_eco_mode = False
+            purifier.eco_mode = False
+            purifier.night_mode = False
+            purifier.rapid_mode = False
+            purifier.fan_speed = 1
         elif preset_mode == "auto_eco":
             await client.async_set_eco_mode(attr)
+            purifier.auto_eco_mode = True
+            purifier.auto_mode = False
+            purifier.eco_mode = False
+            purifier.night_mode = False
+            purifier.rapid_mode = False
+            purifier.fan_speed = 0
         elif preset_mode == "night":
             await client.async_set_night_mode(attr)
+            purifier.night_mode = True
+            purifier.auto_mode = False
+            purifier.auto_eco_mode = False
+            purifier.eco_mode = False
+            purifier.rapid_mode = False
+            purifier.fan_speed = 0
         elif preset_mode == "eco":
             await client.async_set_eco_mode(attr)
+            purifier.eco_mode = True
+            purifier.auto_mode = False
+            purifier.auto_eco_mode = False
+            purifier.night_mode = False
+            purifier.rapid_mode = False
+            purifier.fan_speed = 0
         elif preset_mode == "rapid":
             await client.async_set_rapid_mode(attr)
+            purifier.rapid_mode = True
+            purifier.auto_mode = False
+            purifier.auto_eco_mode = False
+            purifier.eco_mode = False
+            purifier.night_mode = False
+            purifier.fan_speed = 0
+
+        self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
         await self.coordinator.async_request_refresh()

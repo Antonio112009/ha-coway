@@ -37,3 +37,8 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
     def purifier(self) -> CowayPurifier:
         """Return the purifier data for this device."""
         return self.coordinator.data.purifiers[self._device_id]
+
+    @property
+    def available(self) -> bool:
+        """Return True when the purifier is connected to Coway servers."""
+        return super().available and self.purifier.network_status

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -11,6 +12,7 @@ from homeassistant.components.select import SelectEntity, SelectEntityDescriptio
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import COMMAND_REFRESH_DELAY
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import (
     AP_1512HHS_UK_EU_CODES,
@@ -175,3 +177,5 @@ class CowaySelect(CowayEntity, SelectEntity):
         )
         self._optimistic_value = option
         self.async_write_ha_state()
+        await asyncio.sleep(COMMAND_REFRESH_DELAY)
+        await self.coordinator.async_request_refresh()

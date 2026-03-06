@@ -9,7 +9,7 @@ from typing import Any
 from pycoway import CowayPurifier, DeviceAttributes
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -76,22 +76,33 @@ class CowaySwitch(CowayEntity, SwitchEntity):
         super().__init__(coordinator, device_id)
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
+        self._optimistic_state: bool | None = None
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         return self.entity_description.is_on_fn(self.purifier)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when coordinator provides fresh data."""
+        self._optimistic_state = None
+        super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch."""
         await self.entity_description.turn_on_fn(
             self.coordinator, self.purifier.device_attr
         )
-        await self.coordinator.async_request_refresh()
+        self._optimistic_state = True
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch."""
         await self.entity_description.turn_off_fn(
             self.coordinator, self.purifier.device_attr
         )
-        await self.coordinator.async_request_refresh()
+        self._optimistic_state = False
+        self.async_write_ha_state()

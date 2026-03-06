@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pycoway import CowayPurifier, DeviceAttributes
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -105,15 +105,25 @@ class CowaySelect(CowayEntity, SelectEntity):
         super().__init__(coordinator, device_id)
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
+        self._optimistic_value: str | None = None
 
     @property
     def current_option(self) -> str | None:
         """Return the current selected option."""
+        if self._optimistic_value is not None:
+            return self._optimistic_value
         return self.entity_description.current_fn(self.purifier)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic value when coordinator provides fresh data."""
+        self._optimistic_value = None
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         await self.entity_description.select_fn(
             self.coordinator, self.purifier.device_attr, option
         )
-        await self.coordinator.async_request_refresh()
+        self._optimistic_value = option
+        self.async_write_ha_state()

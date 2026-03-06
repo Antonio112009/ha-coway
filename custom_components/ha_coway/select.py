@@ -5,14 +5,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from pycoway import CowayPurifier, DeviceAttributes, LightMode
+from pycoway import CowayPurifier, DeviceAttributes
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import AP_1512HHS_UK_EU_CODES, LIGHT_MODE_MODELS, MODEL_250S
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import (
+    AP_1512HHS_UK_EU_CODES,
+    API_TO_LIGHT_MODE,
+    LIGHT_MODE_MODELS,
+    LIGHT_MODE_OPTIONS_250S,
+    LIGHT_MODE_OPTIONS_ICONS,
+    LIGHT_MODE_TO_API,
+    MODEL_250S,
+)
 from .entity import CowayEntity
 
 TIMER_OPTIONS = ["off", "60", "120", "240", "480"]
@@ -20,21 +28,6 @@ SENSITIVITY_OPTIONS = ["sensitive", "moderate", "insensitive"]
 PRE_FILTER_FREQUENCY_OPTIONS = ["2", "3", "4"]
 _SENSITIVITY_TO_API = {"sensitive": "1", "moderate": "2", "insensitive": "3"}
 _API_TO_SENSITIVITY = {1: "sensitive", 2: "moderate", 3: "insensitive"}
-
-LIGHT_MODE_OPTIONS_250S = ["on", "off", "aqi_off"]
-LIGHT_MODE_OPTIONS_ICONS = ["on", "off", "aqi_off", "half_off"]
-_LIGHT_MODE_TO_API = {
-    "on": LightMode.ON,
-    "off": LightMode.OFF,
-    "aqi_off": LightMode.AQI_OFF,
-    "half_off": LightMode.HALF_OFF,
-}
-_API_TO_LIGHT_MODE = {
-    0: "on",
-    1: "aqi_off",
-    2: "off",
-    3: "half_off",
-}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -111,12 +104,12 @@ def _get_select_descriptions(
                 translation_key="light_mode",
                 options=options,
                 current_fn=lambda p: (
-                    _API_TO_LIGHT_MODE.get(p.light_mode)
+                    API_TO_LIGHT_MODE.get(p.light_mode)
                     if p.light_mode is not None
                     else None
                 ),
                 select_fn=lambda c, a, v: c.client.async_set_light_mode(
-                    a, light_mode=_LIGHT_MODE_TO_API[v]
+                    a, light_mode=LIGHT_MODE_TO_API[v]
                 ),
             )
         )

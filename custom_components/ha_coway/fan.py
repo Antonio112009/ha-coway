@@ -13,8 +13,15 @@ from homeassistant.util.percentage import (
     ranged_value_to_percentage,
 )
 
-from .const import MODEL_250S, MODEL_AP_1512HHS
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import (
+    AP_1512HHS_PRESET_MODES,
+    DEFAULT_PRESET_MODES,
+    MODEL_250S,
+    MODEL_250S_HIDDEN_SPEEDS,
+    MODEL_250S_PRESET_MODES,
+    MODEL_AP_1512HHS,
+)
 from .entity import CowayEntity
 
 SPEED_RANGE = (1, 3)
@@ -61,14 +68,14 @@ class CowayFan(CowayEntity, FanEntity):
         model = purifier.device_attr.model
 
         if model_code == MODEL_AP_1512HHS:
-            return ["auto", "eco"]
+            return list(AP_1512HHS_PRESET_MODES)
         if model == MODEL_250S:
-            modes = ["auto", "night", "rapid"]
+            modes = list(MODEL_250S_PRESET_MODES)
             if purifier.fan_speed == 9:
                 modes.insert(1, "auto_eco")
             return modes
         # Default (400S, IconS, others)
-        modes = ["auto", "night"]
+        modes = list(DEFAULT_PRESET_MODES)
         if purifier.auto_eco_mode:
             modes.insert(1, "auto_eco")
         return modes
@@ -86,7 +93,7 @@ class CowayFan(CowayEntity, FanEntity):
         # 250S reports speed 5 (rapid) and 9 (smart eco) which are not
         # user-selectable speeds — show 0% to match the IoCare app.
         if self.purifier.device_attr.model == MODEL_250S:
-            if self.purifier.fan_speed in (5, 9):
+            if self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS:
                 return 0
         # Auto eco mode has no meaningful speed level
         if self.preset_mode == "auto_eco":

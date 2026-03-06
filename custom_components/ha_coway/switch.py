@@ -12,8 +12,8 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LIGHT_MODE_MODELS, MODEL_250S
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import LIGHT_MODE_MODELS, MODEL_250S
 from .entity import CowayEntity
 
 

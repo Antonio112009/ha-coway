@@ -23,8 +23,8 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import AP_1512HHS_UK_EU_CODES, MODEL_250S
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import AP_1512HHS_UK_EU_CODES, MODEL_250S
 from .entity import CowayEntity
 
 AQ_GRADE_MAP = {

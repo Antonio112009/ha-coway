@@ -14,6 +14,14 @@ from homeassistant.util.percentage import (
 )
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import (
+    AP_1512HHS_PRESET_MODES,
+    DEFAULT_PRESET_MODES,
+    MODEL_250S,
+    MODEL_250S_HIDDEN_SPEEDS,
+    MODEL_250S_PRESET_MODES,
+    MODEL_AP_1512HHS,
+)
 from .entity import CowayEntity
 
 SPEED_RANGE = (1, 3)
@@ -41,7 +49,6 @@ class CowayFan(CowayEntity, FanEntity):
         | FanEntityFeature.PRESET_MODE
     )
     _attr_speed_count = int_states_in_range = 3
-    _attr_preset_modes = ["auto", "night", "eco", "rapid"]
     _attr_translation_key = "purifier"
 
     def __init__(
@@ -54,6 +61,26 @@ class CowayFan(CowayEntity, FanEntity):
         self._attr_unique_id = device_id
 
     @property
+    def preset_modes(self) -> list[str]:
+        """Return the available preset modes based on purifier model."""
+        purifier = self.purifier
+        model_code = purifier.device_attr.model_code
+        model = purifier.device_attr.model
+
+        if model_code == MODEL_AP_1512HHS:
+            return list(AP_1512HHS_PRESET_MODES)
+        if model == MODEL_250S:
+            modes = list(MODEL_250S_PRESET_MODES)
+            if purifier.fan_speed == 9:
+                modes.insert(1, "auto_eco")
+            return modes
+        # Default (400S, IconS, others)
+        modes = list(DEFAULT_PRESET_MODES)
+        if purifier.auto_eco_mode:
+            modes.insert(1, "auto_eco")
+        return modes
+
+    @property
     def is_on(self) -> bool | None:
         """Return true if the purifier is on."""
         return self.purifier.is_on
@@ -63,20 +90,44 @@ class CowayFan(CowayEntity, FanEntity):
         """Return the current speed as a percentage."""
         if not self.is_on or self.purifier.fan_speed is None:
             return 0
+        # 250S reports speed 5 (rapid) and 9 (smart eco) which are not
+        # user-selectable speeds — show 0% to match the IoCare app.
+        if self.purifier.device_attr.model == MODEL_250S:
+            if self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS:
+                return 0
+        # Auto eco mode has no meaningful speed level
+        if self.preset_mode == "auto_eco":
+            return 0
         return ranged_value_to_percentage(SPEED_RANGE, self.purifier.fan_speed)
 
     @property
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
         purifier = self.purifier
-        if purifier.auto_mode:
-            return "auto"
-        if purifier.night_mode:
-            return "night"
-        if purifier.eco_mode:
-            return "eco"
-        if purifier.rapid_mode:
-            return "rapid"
+        model_code = purifier.device_attr.model_code
+        model = purifier.device_attr.model
+
+        if model_code == MODEL_AP_1512HHS:
+            if purifier.auto_mode:
+                return "auto"
+            if purifier.eco_mode:
+                return "eco"
+        elif model == MODEL_250S:
+            if purifier.fan_speed == 9:
+                return "auto_eco"
+            if purifier.auto_mode:
+                return "auto"
+            if purifier.night_mode:
+                return "night"
+            if purifier.rapid_mode:
+                return "rapid"
+        else:
+            if purifier.auto_eco_mode:
+                return "auto_eco"
+            if purifier.auto_mode:
+                return "auto"
+            if purifier.night_mode:
+                return "night"
         return None
 
     async def async_turn_on(
@@ -119,6 +170,8 @@ class CowayFan(CowayEntity, FanEntity):
         client = self.coordinator.client
         if preset_mode == "auto":
             await client.async_set_auto_mode(attr)
+        elif preset_mode == "auto_eco":
+            await client.async_set_eco_mode(attr)
         elif preset_mode == "night":
             await client.async_set_night_mode(attr)
         elif preset_mode == "eco":

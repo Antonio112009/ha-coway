@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
+from .devices import AP_1512HHS_UK_EU_CODES, MODEL_250S
 from .entity import CowayEntity
 
 AQ_GRADE_MAP = {
@@ -41,23 +42,85 @@ class CowaySensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[CowayPurifier], int | str | None]
 
 
-SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
-    CowaySensorEntityDescription(
-        key="pm2_5",
-        translation_key="pm2_5",
-        native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-        device_class=SensorDeviceClass.PM25,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda p: p.particulate_matter_2_5,
+# --- Standard descriptions (used for most models) ---
+
+PM2_5_DESCRIPTION = CowaySensorEntityDescription(
+    key="pm2_5",
+    translation_key="pm2_5",
+    native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+    device_class=SensorDeviceClass.PM25,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.particulate_matter_2_5,
+)
+
+PM10_DESCRIPTION = CowaySensorEntityDescription(
+    key="pm10",
+    translation_key="pm10",
+    native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+    device_class=SensorDeviceClass.PM10,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.particulate_matter_10,
+)
+
+PRE_FILTER_DESCRIPTION = CowaySensorEntityDescription(
+    key="pre_filter",
+    translation_key="pre_filter",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.pre_filter_pct,
+)
+
+MAX2_FILTER_DESCRIPTION = CowaySensorEntityDescription(
+    key="max2_filter",
+    translation_key="max2_filter",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.max2_pct,
+)
+
+LUX_DESCRIPTION = CowaySensorEntityDescription(
+    key="lux",
+    translation_key="lux",
+    native_unit_of_measurement=LIGHT_LUX,
+    device_class=SensorDeviceClass.ILLUMINANCE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.lux_sensor,
+)
+
+# --- AP-1512HHS UK/EU alternates ---
+
+CHARCOAL_FILTER_DESCRIPTION = CowaySensorEntityDescription(
+    key="pre_filter",
+    translation_key="charcoal_filter",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.odor_filter_pct,
+)
+
+HEPA_FILTER_DESCRIPTION = CowaySensorEntityDescription(
+    key="max2_filter",
+    translation_key="hepa_filter",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: p.max2_pct,
+)
+
+# --- 250S lux (inverted sensor) ---
+
+LUX_INVERTED_DESCRIPTION = CowaySensorEntityDescription(
+    key="lux",
+    translation_key="lux",
+    native_unit_of_measurement=LIGHT_LUX,
+    device_class=SensorDeviceClass.ILLUMINANCE,
+    state_class=SensorStateClass.MEASUREMENT,
+    value_fn=lambda p: (
+        max(1022 - p.lux_sensor, 0) if p.lux_sensor is not None else None
     ),
-    CowaySensorEntityDescription(
-        key="pm10",
-        translation_key="pm10",
-        native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-        device_class=SensorDeviceClass.PM10,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda p: p.particulate_matter_10,
-    ),
+)
+
+# --- Descriptions common to all models ---
+
+COMMON_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
     CowaySensorEntityDescription(
         key="co2",
         translation_key="co2",
@@ -82,20 +145,6 @@ SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         value_fn=lambda p: p.air_quality_index,
     ),
     CowaySensorEntityDescription(
-        key="pre_filter",
-        translation_key="pre_filter",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda p: p.pre_filter_pct,
-    ),
-    CowaySensorEntityDescription(
-        key="max2_filter",
-        translation_key="max2_filter",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda p: p.max2_pct,
-    ),
-    CowaySensorEntityDescription(
         key="odor_filter",
         translation_key="odor_filter",
         native_unit_of_measurement=PERCENTAGE,
@@ -111,14 +160,6 @@ SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         value_fn=lambda p: p.timer_remaining,
     ),
     CowaySensorEntityDescription(
-        key="lux",
-        translation_key="lux",
-        native_unit_of_measurement=LIGHT_LUX,
-        device_class=SensorDeviceClass.ILLUMINANCE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda p: p.lux_sensor,
-    ),
-    CowaySensorEntityDescription(
         key="indoor_aq",
         translation_key="indoor_aq",
         device_class=SensorDeviceClass.ENUM,
@@ -128,6 +169,43 @@ SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
 )
 
 
+def _get_sensor_descriptions(
+    purifier: CowayPurifier,
+) -> list[CowaySensorEntityDescription]:
+    """Build model-specific sensor descriptions for a purifier."""
+    model = purifier.device_attr.model
+    code = purifier.device_attr.code
+    product_name = purifier.device_attr.product_name
+    is_uk_eu_ap = code in AP_1512HHS_UK_EU_CODES
+
+    descriptions: list[CowaySensorEntityDescription] = []
+
+    # PM2.5 — exclude for generic AIRMEGA models (no dedicated PM2.5 sensor)
+    if product_name != "AIRMEGA":
+        descriptions.append(PM2_5_DESCRIPTION)
+
+    descriptions.append(PM10_DESCRIPTION)
+
+    # Pre-filter / Charcoal filter
+    descriptions.append(
+        CHARCOAL_FILTER_DESCRIPTION if is_uk_eu_ap else PRE_FILTER_DESCRIPTION
+    )
+
+    # MAX2 / HEPA filter
+    descriptions.append(
+        HEPA_FILTER_DESCRIPTION if is_uk_eu_ap else MAX2_FILTER_DESCRIPTION
+    )
+
+    # Lux — 250S has an inverted sensor
+    if model == MODEL_250S:
+        descriptions.append(LUX_INVERTED_DESCRIPTION)
+    else:
+        descriptions.append(LUX_DESCRIPTION)
+
+    descriptions.extend(COMMON_DESCRIPTIONS)
+    return descriptions
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: CowayConfigEntry,
@@ -135,11 +213,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up Coway sensor entities."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        CowaySensor(coordinator, device_id, description)
-        for device_id in coordinator.data.purifiers
-        for description in SENSOR_DESCRIPTIONS
-    )
+    entities: list[CowaySensor] = []
+    for device_id, purifier in coordinator.data.purifiers.items():
+        for description in _get_sensor_descriptions(purifier):
+            entities.append(CowaySensor(coordinator, device_id, description))
+    async_add_entities(entities)
 
 
 class CowaySensor(CowayEntity, SensorEntity):

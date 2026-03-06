@@ -24,25 +24,20 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for [Coway](
 
 ### Manual
 
-1. Copy the `custom_components/ha_coway` directory into your Home Assistant `config/custom_components/` directory.
+1. Download and copy `custom_components/ha_coway` into your Home Assistant `config/custom_components/` directory.
 2. Restart Home Assistant.
-3. Follow the instructions in the **Setup** section.
 
 > [!WARNING]
-> If installing manually, you will need to subscribe to [releases](https://github.com/Antonio112009/ha-coway/releases) to be alerted about new versions.
+> Manual installations don't receive update notifications. You can watch this repository or subscribe to [releases](https://github.com/Antonio112009/ha-coway/releases) to stay informed.
 
 ## Setup
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=ha_coway)
 
-> [!TIP]
-> If the button above doesn't work:
-> 1. Navigate to **Settings** → **Devices & Services**.
-> 2. Click the **+ Add Integration** button.
-> 3. Search for **Coway**.
+Or manually: go to **Settings** → **Devices & Services** → **Add Integration** → search for **Coway**.
 
 > [!CAUTION]
-> Coway has implemented password checks which prompt users to change or skip changing passwords that are 60 or more days old. If you want to skip changing your password, select the **Skip password change** option during setup. Otherwise, when the time comes, you will need to manually log in using the IoCare+ app and change your password, followed by reauthentication of the integration within Home Assistant.
+> Coway may prompt you to change your password if it hasn't been updated in a while. During setup, you can select **Skip password change** to bypass this. If you don't skip, you'll need to update your password in the IoCare+ app first, then re-authenticate the integration in Home Assistant.
 
 ## Devices
 

@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
     CONCENTRATION_PARTS_PER_MILLION,
+    LIGHT_LUX,
     PERCENTAGE,
     UnitOfTime,
 )
@@ -101,6 +102,14 @@ SENSOR_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda p: p.timer_remaining,
+    ),
+    CowaySensorEntityDescription(
+        key="lux",
+        translation_key="lux",
+        native_unit_of_measurement=LIGHT_LUX,
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda p: p.lux_sensor,
     ),
 )
 

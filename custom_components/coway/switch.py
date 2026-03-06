@@ -21,8 +21,12 @@ class CowaySwitchEntityDescription(SwitchEntityDescription):
     """Describe a Coway switch entity."""
 
     is_on_fn: Callable[[CowayPurifier], bool | None]
-    turn_on_fn: Callable[[CowayDataUpdateCoordinator, DeviceAttributes], Awaitable[None]]
-    turn_off_fn: Callable[[CowayDataUpdateCoordinator, DeviceAttributes], Awaitable[None]]
+    turn_on_fn: Callable[
+        [CowayDataUpdateCoordinator, DeviceAttributes], Awaitable[None]
+    ]
+    turn_off_fn: Callable[
+        [CowayDataUpdateCoordinator, DeviceAttributes], Awaitable[None]
+    ]
 
 
 SWITCH_DESCRIPTIONS: tuple[CowaySwitchEntityDescription, ...] = (

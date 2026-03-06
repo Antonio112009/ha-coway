@@ -10,6 +10,7 @@ from pycoway import CowayPurifier, DeviceAttributes
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -71,12 +72,23 @@ async def async_setup_entry(
 ) -> None:
     """Set up Coway switch entities."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        CowaySwitch(coordinator, device_id, description)
-        for device_id, purifier in coordinator.data.purifiers.items()
-        for description in SWITCH_DESCRIPTIONS
-        if _is_switch_supported(description, purifier)
-    )
+    entities: list[CowaySwitch] = []
+    valid_unique_ids: set[str] = set()
+    for device_id, purifier in coordinator.data.purifiers.items():
+        for description in SWITCH_DESCRIPTIONS:
+            if not _is_switch_supported(description, purifier):
+                continue
+            unique_id = f"{device_id}_{description.key}"
+            valid_unique_ids.add(unique_id)
+            entities.append(CowaySwitch(coordinator, device_id, description))
+
+    # Remove stale switch entities that are no longer provided
+    ent_reg = er.async_get(hass)
+    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent_entry.domain == "switch" and ent_entry.unique_id not in valid_unique_ids:
+            ent_reg.async_remove(ent_entry.entity_id)
+
+    async_add_entities(entities)
 
 
 class CowaySwitch(CowayEntity, SwitchEntity):

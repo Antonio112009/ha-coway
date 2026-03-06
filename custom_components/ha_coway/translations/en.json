@@ -61,6 +61,18 @@
       },
       "timer_remaining": {
         "name": "Timer remaining"
+      },
+      "lux": {
+        "name": "Illuminance"
+      },
+      "indoor_aq": {
+        "name": "Indoor air quality",
+        "state": {
+          "good": "Good",
+          "moderate": "Moderate",
+          "unhealthy": "Unhealthy",
+          "very_unhealthy": "Very unhealthy"
+        }
       }
     },
     "switch": {
@@ -88,6 +100,14 @@
           "sensitive": "Sensitive",
           "moderate": "Moderate",
           "insensitive": "Insensitive"
+        }
+      },
+      "pre_filter_frequency": {
+        "name": "Pre-filter wash frequency",
+        "state": {
+          "2": "2 weeks",
+          "3": "3 weeks",
+          "4": "4 weeks"
         }
       }
     },

@@ -13,11 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_SKIP_PASSWORD_CHANGE, DOMAIN
+from .const import (
+    CONF_POLLING_INTERVAL,
+    CONF_SKIP_PASSWORD_CHANGE,
+    DEFAULT_POLLING_INTERVAL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-SCAN_INTERVAL = timedelta(seconds=60)
 
 type CowayConfigEntry = ConfigEntry[CowayDataUpdateCoordinator]
 
@@ -29,11 +32,14 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
 
     def __init__(self, hass: HomeAssistant, entry: CowayConfigEntry) -> None:
         """Initialize the coordinator."""
+        polling_interval = entry.options.get(
+            CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL
+        )
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=SCAN_INTERVAL,
+            update_interval=timedelta(seconds=polling_interval),
             config_entry=entry,
         )
         self.client = CowayClient(

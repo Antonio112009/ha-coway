@@ -23,6 +23,18 @@
       "already_configured": "Account is already configured"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "polling_interval": "Polling interval (seconds)"
+        },
+        "data_description": {
+          "polling_interval": "How often to poll the Coway API for updates. Lower values give faster updates but increase API load. Default is 60 seconds."
+        }
+      }
+    }
+  },
   "exceptions": {
     "auth_failed": {
       "message": "Authentication failed. Please re-configure the integration."
@@ -31,7 +43,18 @@
   "entity": {
     "fan": {
       "purifier": {
-        "name": "Purifier"
+        "name": "Purifier",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "Auto",
+              "auto_eco": "Auto (Eco)",
+              "night": "Night",
+              "eco": "Eco",
+              "rapid": "Rapid"
+            }
+          }
+        }
       }
     },
     "sensor": {
@@ -53,8 +76,14 @@
       "pre_filter": {
         "name": "Pre-filter"
       },
+      "charcoal_filter": {
+        "name": "Charcoal filter"
+      },
       "max2_filter": {
         "name": "MAX2 filter"
+      },
+      "hepa_filter": {
+        "name": "HEPA filter"
       },
       "odor_filter": {
         "name": "Odor filter"
@@ -108,6 +137,15 @@
           "2": "2 weeks",
           "3": "3 weeks",
           "4": "4 weeks"
+        }
+      },
+      "light_mode": {
+        "name": "Light mode",
+        "state": {
+          "on": "On",
+          "off": "Off",
+          "aqi_off": "AQI off",
+          "half_off": "Half off"
         }
       }
     },

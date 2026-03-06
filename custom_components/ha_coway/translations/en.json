@@ -61,6 +61,18 @@
       },
       "timer_remaining": {
         "name": "Timer remaining"
+      },
+      "lux": {
+        "name": "Illuminance"
+      },
+      "indoor_aq": {
+        "name": "Indoor air quality",
+        "state": {
+          "good": "Good",
+          "moderate": "Moderate",
+          "unhealthy": "Unhealthy",
+          "very_unhealthy": "Very unhealthy"
+        }
       }
     },
     "switch": {

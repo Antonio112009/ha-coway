@@ -41,3 +41,12 @@ The repository includes:
 ## License
 
 This project is licensed under the MIT License. See `LICENSE`.
+
+## Acknowledgements
+
+This integration is built on top of the work by **Dr. Drinovac** ([@RobertD502](https://github.com/RobertD502)), who created the original [cowayaio](https://github.com/RobertD502/cowayaio) Python library and the [IoCare Home Assistant integration](https://github.com/RobertD502/home-assistant-iocare) for Coway air purifiers.
+
+Robert collects donations for a local animal rescue. If you'd like to support his work, you can donate through his repository:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-donate-yellow)](https://www.buymeacoffee.com/RobertD502)
+[![Liberapay](https://img.shields.io/badge/Liberapay-donate-F6C915)](https://liberapay.com/RobertD502/donate)

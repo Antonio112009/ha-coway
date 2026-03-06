@@ -27,8 +27,7 @@ async def async_setup_entry(
     """Set up Coway fan entities."""
     coordinator = entry.runtime_data
     async_add_entities(
-        CowayFan(coordinator, device_id)
-        for device_id in coordinator.data.purifiers
+        CowayFan(coordinator, device_id) for device_id in coordinator.data.purifiers
     )
 
 

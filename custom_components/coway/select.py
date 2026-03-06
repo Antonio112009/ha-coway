@@ -44,9 +44,11 @@ SENSITIVITY_DESCRIPTION = CowaySelectEntityDescription(
     key="sensitivity",
     translation_key="sensitivity",
     options=SENSITIVITY_OPTIONS,
-    current_fn=lambda p: _API_TO_SENSITIVITY.get(p.smart_mode_sensitivity)
-    if p.smart_mode_sensitivity is not None
-    else None,
+    current_fn=lambda p: (
+        _API_TO_SENSITIVITY.get(p.smart_mode_sensitivity)
+        if p.smart_mode_sensitivity is not None
+        else None
+    ),
     select_fn=lambda c, a, v: c.client.async_set_smart_mode_sensitivity(
         a, sensitivity=_SENSITIVITY_TO_API[v]
     ),

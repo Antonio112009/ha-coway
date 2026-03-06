@@ -62,6 +62,9 @@
       "timer_remaining": {
         "name": "Timer remaining"
       },
+      "lux": {
+        "name": "Illuminance"
+      },
       "indoor_aq": {
         "name": "Indoor air quality",
         "state": {

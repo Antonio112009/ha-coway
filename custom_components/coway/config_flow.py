@@ -27,7 +27,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Coway."""
 
-    VERSION = 1
+    VERSION = 6
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

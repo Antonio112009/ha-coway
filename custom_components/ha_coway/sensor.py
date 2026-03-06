@@ -216,6 +216,8 @@ async def async_setup_entry(
     entities: list[CowaySensor] = []
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in _get_sensor_descriptions(purifier):
+            if description.value_fn(purifier) is None:
+                continue
             entities.append(CowaySensor(coordinator, device_id, description))
     async_add_entities(entities)
 

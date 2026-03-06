@@ -16,6 +16,8 @@ TO_REDACT = {
     CONF_USERNAME,
     "title",
     "unique_id",
+    "device_id",
+    "place_id",
 }
 
 
@@ -24,10 +26,13 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     coordinator = entry.runtime_data
-    return {
-        "entry": async_redact_data(entry.as_dict(), TO_REDACT),
-        "purifiers": {
-            device_id: asdict(purifier)
-            for device_id, purifier in coordinator.data.purifiers.items()
+    return async_redact_data(
+        {
+            "entry": entry.as_dict(),
+            "purifiers": {
+                f"purifier_{i}": asdict(purifier)
+                for i, purifier in enumerate(coordinator.data.purifiers.values(), 1)
+            },
         },
-    }
+        TO_REDACT,
+    )

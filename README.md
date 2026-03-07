@@ -4,10 +4,29 @@
 [![GitHub manifest version](https://img.shields.io/github/manifest-json/v/Antonio112009/ha-coway?filename=custom_components%2Fha_coway%2Fmanifest.json)](https://github.com/Antonio112009/ha-coway/releases)
 [![GitHub License](https://img.shields.io/github/license/Antonio112009/ha-coway)](LICENSE)
 
-Custom [Home Assistant](https://www.home-assistant.io/) integration for [Coway](https://www.coway.com/) air purifiers using the IoCare+ app.
+Custom [Home Assistant](https://www.home-assistant.io/) integration for [Coway](https://www.coway.com/) air purifiers connected through the IoCare+ cloud service.
+
+This integration adds your Coway purifiers as Home Assistant devices, with support for fan control, preset modes, filter-life sensors, air-quality metrics, timer controls, and model-specific features such as light modes and button lock.
 
 > [!IMPORTANT]
 > Your purifiers must be registered with the **IoCare+** app before they can be used with this integration.
+
+## Highlights
+
+- Native Home Assistant config flow
+- HACS support
+- Multiple purifiers supported under one Coway account
+- Configurable cloud polling interval from 30 to 600 seconds
+- Model-aware entities so unsupported controls are not created
+
+## Requirements
+
+- A Coway account that can sign in to the IoCare+ app
+- At least one purifier already registered in IoCare+
+- Home Assistant with access to HACS for the recommended install method
+
+> [!NOTE]
+> This is a cloud-polling integration. Commands are sent immediately, then the integration refreshes device state from Coway shortly after.
 
 ## Installation
 
@@ -18,9 +37,10 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for [Coway](
 > [!TIP]
 > If the button above doesn't work, manually add this repository as a custom repository in HACS:
 > 1. Open HACS in Home Assistant.
-> 2. Click the three dots in the top right → **Custom repositories**.
+> 2. Click the three dots in the top right, then choose **Custom repositories**.
 > 3. Add `https://github.com/Antonio112009/ha-coway` with category **Integration**.
-> 4. Download and restart Home Assistant.
+> 4. Install **Coway** from HACS.
+> 5. Restart Home Assistant.
 
 ### Manual
 
@@ -34,31 +54,64 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for [Coway](
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=ha_coway)
 
-Or manually: go to **Settings** → **Devices & Services** → **Add Integration** → search for **Coway**.
+Or manually: go to **Settings** > **Devices & Services** > **Add Integration** and search for **Coway**.
+
+During setup, you will be asked for:
+
+- Your Coway username
+- Your Coway password
+- Whether to enable **Skip password change prompt** (enabled by default)
 
 > [!CAUTION]
 > Coway may prompt you to change your password if it hasn't been updated in a while. During setup, you can select **Skip password change** to bypass this. If you don't skip, you'll need to update your password in the IoCare+ app first, then re-authenticate the integration in Home Assistant.
 
-## Devices
+After setup, you can adjust the polling interval from **Settings** > **Devices & Services** > **Coway** > **Configure**. The default is `60` seconds, and the allowed range is `30` to `600` seconds.
 
-Each purifier is exposed as a device in Home Assistant. Depending on your purifier model, the following entities are available:
+## Entities
 
-| Entity | Type | Description |
-|--------|------|-------------|
-| `Purifier` | `Fan` | Power, speed, and preset mode control (Auto, Night, Rapid, etc.) |
-| `Timer` | `Select` | Set timer to OFF, 1h, 2h, 4h, or 8h. Setting a timer can only be done when the purifier is ON. |
-| `Light` | `Switch` | Turn indicator light on/off. Controlling the light can only be done when the purifier is ON. |
-| `Pre-filter wash frequency` | `Select` | View and change pre-filter wash frequency setting. |
-| `Smart mode sensitivity` | `Select` | View and change smart mode sensitivity setting. |
-| `Indoor air quality` | `Sensor` | Air quality grade (Good, Moderate, Unhealthy, Very Unhealthy). |
-| `PM10` | `Sensor` | Particulate matter 10 concentration. |
-| `Lux` | `Sensor` | Light lux measurement. |
-| `Pre-filter` | `Sensor` | Pre-filter life remaining (%). |
-| `Max2 filter` | `Sensor` | Max2 filter life remaining (%). |
-| `Timer remaining` | `Sensor` | Time left on active timer (hours:minutes). |
+Each purifier is exposed as a device in Home Assistant. The exact entity set depends on the model and on which values the Coway API reports for that device.
+
+| Category | Entities |
+|----------|----------|
+| `Fan` | `Purifier` with power, speed control, and preset modes |
+| `Select` | `Off timer`, `Smart mode sensitivity`, `Pre-filter wash frequency`, `Light mode` |
+| `Switch` | `Light`, `Button lock` |
+| `Sensor` | `Indoor air quality`, `Air quality index`, `PM2.5`, `PM10`, `CO2`, `VOC`, `Illuminance`, filter-life sensors, `Timer remaining` |
+| `Binary sensor` | `Network` |
+
+### Model-specific notes
+
+- `Airmega 250S` and `Airmega IconS` use a `Light mode` select instead of a simple `Light` switch.
+- `Airmega 250S` also exposes a `Button lock` switch.
+- `AP-1512HHS` UK/EU variants expose `Charcoal filter` and `HEPA filter` sensors instead of `Pre-filter` and `MAX2 filter`.
+- `AP-1512HHS` UK/EU variants do not expose the `Pre-filter wash frequency` select.
+- Preset modes vary by model. For example, `AP-1512HHS` uses `Auto` and `Eco`, while `Airmega 250S` can expose `Auto`, `Night`, `Rapid`, and `Auto (Eco)` when applicable.
 
 > [!NOTE]
-> Only entities supported by your purifier model are created. Unsupported sensors are automatically hidden.
+> Only supported entities are created. If the Coway API does not provide a value for a given sensor or control, that entity is omitted automatically.
+
+## Troubleshooting
+
+### Authentication fails
+
+- Confirm the same username and password work in the IoCare+ app.
+- If Coway is forcing a password rotation, enable **Skip password change prompt** during setup or update the password in the app first.
+- If authentication stops working later, remove and re-add the integration.
+
+### Some entities are missing
+
+- This is usually model-specific behavior rather than an error.
+- Reload the integration after pairing if your purifier was newly added to your Coway account.
+- Check whether the missing control is one of the model-specific differences listed above.
+
+### Updates feel slow
+
+- Lower the polling interval in the integration options.
+- Keep in mind that lower intervals create more API traffic to Coway.
+
+## Support
+
+If you find a bug or a device-specific incompatibility, open an issue on [GitHub](https://github.com/Antonio112009/ha-coway/issues).
 
 ## License
 

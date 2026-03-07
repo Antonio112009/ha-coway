@@ -115,7 +115,7 @@ If you find a bug or a device-specific incompatibility, open an issue on [GitHub
 
 If possible, attach Home Assistant diagnostics for the Coway integration with the report. This integration supports diagnostics export, and sensitive fields such as your username, password, and device identifiers are redacted automatically.
 
-To download diagnostics in Home Assistant, open **Settings** > **Devices & Services** > **Coway**, then use the integration menu to download diagnostics before filing the issue.
+To download diagnostics in Home Assistant, open `Settings > Devices & Services > Coway`, then use the integration menu to download diagnostics before filing the issue.
 
 You do not need to enable anything extra in Home Assistant to make diagnostics available. The Diagnostics integration is built in and enabled by default. If you do not see **Download diagnostics**, make sure you are opening the menu for the Coway integration entry in **Settings** > **Devices & Services**.
 

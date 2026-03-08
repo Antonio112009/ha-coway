@@ -108,9 +108,7 @@ async def test_preset_modes_default_with_eco(hass: HomeAssistant) -> None:
 
 async def test_preset_mode_ap1512hhs_auto(hass: HomeAssistant) -> None:
     """AP-1512HHS reports 'auto' when auto_mode is True."""
-    data = make_purifier_data(
-        make_purifier(model_code="AP-1512HHS", auto_mode=True)
-    )
+    data = make_purifier_data(make_purifier(model_code="AP-1512HHS", auto_mode=True))
     entry, _ = await setup_coway_integration(hass, data)
 
     state = hass.states.get(ENTITY_ID)
@@ -119,9 +117,7 @@ async def test_preset_mode_ap1512hhs_auto(hass: HomeAssistant) -> None:
 
 async def test_preset_mode_ap1512hhs_eco(hass: HomeAssistant) -> None:
     """AP-1512HHS reports 'eco' when eco_mode is True."""
-    data = make_purifier_data(
-        make_purifier(model_code="AP-1512HHS", eco_mode=True)
-    )
+    data = make_purifier_data(make_purifier(model_code="AP-1512HHS", eco_mode=True))
     entry, _ = await setup_coway_integration(hass, data)
 
     state = hass.states.get(ENTITY_ID)
@@ -371,9 +367,7 @@ async def test_set_preset_auto_calls_api(hass: HomeAssistant) -> None:
 
 async def test_set_preset_eco_calls_api(hass: HomeAssistant) -> None:
     """Setting preset 'eco' calls async_set_eco_mode (AP-1512HHS)."""
-    data = make_purifier_data(
-        make_purifier(model_code="AP-1512HHS", is_on=True)
-    )
+    data = make_purifier_data(make_purifier(model_code="AP-1512HHS", is_on=True))
     entry, mock_client = await setup_coway_integration(hass, data)
 
     await hass.services.async_call(

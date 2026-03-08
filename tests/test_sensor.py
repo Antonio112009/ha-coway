@@ -109,7 +109,14 @@ def test_common_descriptions_always_present() -> None:
     purifier = make_purifier()
     descs = _get_sensor_descriptions(purifier)
     keys = {d.key for d in descs}
-    for expected in ("co2", "voc", "aqi", "odor_filter", "timer_remaining", "indoor_aq"):
+    for expected in (
+        "co2",
+        "voc",
+        "aqi",
+        "odor_filter",
+        "timer_remaining",
+        "indoor_aq",
+    ):
         assert expected in keys, f"{expected} missing from sensor descriptions"
 
 

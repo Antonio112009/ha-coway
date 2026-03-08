@@ -87,9 +87,7 @@ def make_purifier_data(*purifiers: CowayPurifier) -> PurifierData:
     """Wrap one or more purifiers in a PurifierData object."""
     if not purifiers:
         purifiers = (make_purifier(),)
-    return PurifierData(
-        purifiers={p.device_attr.device_id: p for p in purifiers}
-    )
+    return PurifierData(purifiers={p.device_attr.device_id: p for p in purifiers})
 
 
 def mock_purifier_data() -> PurifierData:

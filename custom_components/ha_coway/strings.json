@@ -17,6 +17,7 @@
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
+      "password_expired": "Coway is requesting a password change because the password has not been changed for 60 days or more. Change your password in the Coway app or enable the 'Skip password change prompt' option.",
       "unknown": "Unexpected error"
     },
     "abort": {
@@ -38,6 +39,9 @@
   "exceptions": {
     "auth_failed": {
       "message": "Authentication failed. Please re-configure the integration."
+    },
+    "password_expired": {
+      "message": "Coway is requesting a password change because the password has not been changed for 60 days or more. Change your password in the Coway app or enable the 'Skip password change prompt' option."
     }
   },
   "entity": {

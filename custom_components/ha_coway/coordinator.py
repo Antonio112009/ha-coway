@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from pycoway import CowayClient, CowayError, PurifierData
+from pycoway import CowayClient, CowayError, PasswordExpired, PurifierData
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -54,6 +54,11 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
         """Authenticate with the Coway API."""
         try:
             await self.client.login()
+        except PasswordExpired as err:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="password_expired",
+            ) from err
         except CowayError as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,

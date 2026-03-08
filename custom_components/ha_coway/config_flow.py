@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from pycoway import AuthError, CowayClient, CowayError
+from pycoway import AuthError, CowayClient, CowayError, PasswordExpired
 
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -69,7 +69,7 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> CowayOptionsFlowHandler:
         """Get the options flow for this handler."""
-        return CowayOptionsFlowHandler(config_entry)
+        return CowayOptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -87,6 +87,8 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
                     await client.login()
             except AuthError:
                 errors["base"] = "invalid_auth"
+            except PasswordExpired:
+                errors["base"] = "password_expired"
             except CowayError:
                 errors["base"] = "cannot_connect"
             except Exception:

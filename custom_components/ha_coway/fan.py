@@ -78,7 +78,7 @@ class CowayFan(CowayEntity, FanEntity):
             return modes
         # Default (400S, IconS, others)
         modes = list(DEFAULT_PRESET_MODES)
-        if purifier.auto_eco_mode:
+        if purifier.eco_mode:
             modes.insert(1, "auto_eco")
         return modes
 
@@ -124,7 +124,7 @@ class CowayFan(CowayEntity, FanEntity):
             if purifier.rapid_mode:
                 return "rapid"
         else:
-            if purifier.auto_eco_mode:
+            if purifier.eco_mode:
                 return "auto_eco"
             if purifier.auto_mode:
                 return "auto"
@@ -197,7 +197,7 @@ class CowayFan(CowayEntity, FanEntity):
         self.purifier.fan_speed = speed
         self.purifier.auto_mode = False
         self.purifier.night_mode = False
-        self.purifier.auto_eco_mode = False
+        self.purifier.eco_mode = False
         self.async_write_ha_state()
         self._schedule_refresh()
 
@@ -224,16 +224,14 @@ class CowayFan(CowayEntity, FanEntity):
         if preset_mode == "auto":
             await client.async_set_auto_mode(attr)
             purifier.auto_mode = True
-            purifier.auto_eco_mode = False
             purifier.eco_mode = False
             purifier.night_mode = False
             purifier.rapid_mode = False
             purifier.fan_speed = 1
         elif preset_mode == "auto_eco":
             await client.async_set_eco_mode(attr)
-            purifier.auto_eco_mode = True
+            purifier.eco_mode = True
             purifier.auto_mode = False
-            purifier.eco_mode = False
             purifier.night_mode = False
             purifier.rapid_mode = False
             purifier.fan_speed = 0
@@ -241,7 +239,6 @@ class CowayFan(CowayEntity, FanEntity):
             await client.async_set_night_mode(attr)
             purifier.night_mode = True
             purifier.auto_mode = False
-            purifier.auto_eco_mode = False
             purifier.eco_mode = False
             purifier.rapid_mode = False
             purifier.fan_speed = 0
@@ -249,7 +246,6 @@ class CowayFan(CowayEntity, FanEntity):
             await client.async_set_eco_mode(attr)
             purifier.eco_mode = True
             purifier.auto_mode = False
-            purifier.auto_eco_mode = False
             purifier.night_mode = False
             purifier.rapid_mode = False
             purifier.fan_speed = 0
@@ -257,7 +253,6 @@ class CowayFan(CowayEntity, FanEntity):
             await client.async_set_rapid_mode(attr)
             purifier.rapid_mode = True
             purifier.auto_mode = False
-            purifier.auto_eco_mode = False
             purifier.eco_mode = False
             purifier.night_mode = False
             purifier.fan_speed = 0

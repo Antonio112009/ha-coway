@@ -216,6 +216,7 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities: list[CowaySensor] = []
     valid_unique_ids: set[str] = set()
+    current_device_ids = set(coordinator.data.purifiers)
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in _get_sensor_descriptions(purifier):
             unique_id = f"{device_id}_{description.key}"
@@ -224,11 +225,22 @@ async def async_setup_entry(
             valid_unique_ids.add(unique_id)
             entities.append(CowaySensor(coordinator, device_id, description))
 
-    # Remove stale sensor entities that are no longer provided
+    # Remove stale sensor entities for the *current* devices that are no longer
+    # provided by the cloud. We deliberately leave entities belonging to devices
+    # that are missing from this update untouched, in case the device is just
+    # temporarily unreachable.
     ent_reg = er.async_get(hass)
     for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if ent_entry.domain == "sensor" and ent_entry.unique_id not in valid_unique_ids:
-            ent_reg.async_remove(ent_entry.entity_id)
+        if ent_entry.domain != "sensor":
+            continue
+        if ent_entry.unique_id in valid_unique_ids:
+            continue
+        if not any(
+            ent_entry.unique_id.startswith(f"{device_id}_")
+            for device_id in current_device_ids
+        ):
+            continue
+        ent_reg.async_remove(ent_entry.entity_id)
 
     async_add_entities(entities)
 

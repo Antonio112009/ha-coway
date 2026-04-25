@@ -146,9 +146,7 @@ class CowayFan(CowayEntity, FanEntity):
         try:
             await coro
         except CowayError as err:
-            _LOGGER.error(
-                "Failed to %s for %s: %s", action, self.entity_id, err
-            )
+            _LOGGER.error("Failed to %s for %s: %s", action, self.entity_id, err)
             self._schedule_refresh()
             return False
         return True
@@ -274,9 +272,7 @@ class CowayFan(CowayEntity, FanEntity):
             return
         api_call, (auto, eco, night, rapid), fan_speed = spec
 
-        if not await self._run_command(
-            f"set preset {preset_mode}", api_call(attr)
-        ):
+        if not await self._run_command(f"set preset {preset_mode}", api_call(attr)):
             return
         purifier.auto_mode = auto
         purifier.eco_mode = eco

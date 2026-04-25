@@ -43,6 +43,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> b
     platforms keyed off ``device_id``.
     """
     if entry.version == 1:
+
         @callback
         def _migrate_unique_id(
             entity_entry: er.RegistryEntry,

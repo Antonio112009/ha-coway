@@ -134,9 +134,7 @@ class CowaySwitch(CowayEntity, SwitchEntity):
                     self.coordinator, self.purifier.device_attr
                 )
             except CowayError as err:
-                _LOGGER.error(
-                    "Failed to turn on %s: %s", self.entity_id, err
-                )
+                _LOGGER.error("Failed to turn on %s: %s", self.entity_id, err)
                 self._schedule_refresh()
                 return
             self._optimistic_state = True
@@ -153,9 +151,7 @@ class CowaySwitch(CowayEntity, SwitchEntity):
                     self.coordinator, self.purifier.device_attr
                 )
             except CowayError as err:
-                _LOGGER.error(
-                    "Failed to turn off %s: %s", self.entity_id, err
-                )
+                _LOGGER.error("Failed to turn off %s: %s", self.entity_id, err)
                 self._schedule_refresh()
                 return
             self._optimistic_state = False

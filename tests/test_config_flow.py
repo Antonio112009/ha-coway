@@ -201,3 +201,67 @@ async def test_options_flow(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {"polling_interval": 120}
+
+
+async def test_reauth_flow_success(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+) -> None:
+    """Reauth flow updates the password and aborts with reauth_successful."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reauth_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"password": "new_password", "skip_password_change": True},
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data["password"] == "new_password"
+    mock_coway_client.login.assert_awaited()
+
+
+async def test_reauth_flow_invalid_auth(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+) -> None:
+    """Reauth flow surfaces invalid_auth on bad credentials and allows retry."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+
+    mock_coway_client.login.side_effect = AuthError("Bad password")
+    result = await entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"password": "still_bad", "skip_password_change": True},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+    mock_coway_client.login.side_effect = None
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"password": "now_good", "skip_password_change": True},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data["password"] == "now_good"

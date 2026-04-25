@@ -12,6 +12,14 @@
         "data_description": {
           "skip_password_change": "Coway requires a password change every 60 days. Enabling this lets Home Assistant continue logging in without interruption. Your password is not changed — the prompt is simply dismissed. Disable only if you want Coway to enforce the password rotation."
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Coway",
+        "description": "Authentication for {username} is no longer valid. Please enter the new password.",
+        "data": {
+          "password": "Password",
+          "skip_password_change": "Skip password change prompt"
+        }
       }
     },
     "error": {
@@ -21,7 +29,8 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "Account is already configured"
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Re-authentication was successful"
     }
   },
   "options": {

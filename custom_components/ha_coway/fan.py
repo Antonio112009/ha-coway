@@ -23,9 +23,15 @@ from .devices import (
     AP_1512HHS_PRESET_MODES,
     DEFAULT_PRESET_MODES,
     MODEL_250S,
+    MODEL_250S_AUTO_ECO_SPEED,
     MODEL_250S_HIDDEN_SPEEDS,
     MODEL_250S_PRESET_MODES,
     MODEL_AP_1512HHS,
+    PRESET_AUTO,
+    PRESET_AUTO_ECO,
+    PRESET_ECO,
+    PRESET_NIGHT,
+    PRESET_RAPID,
 )
 from .entity import CowayEntity
 
@@ -78,13 +84,13 @@ class CowayFan(CowayEntity, FanEntity):
             return list(AP_1512HHS_PRESET_MODES)
         if model == MODEL_250S:
             modes = list(MODEL_250S_PRESET_MODES)
-            if purifier.fan_speed == 9:
-                modes.insert(1, "auto_eco")
+            if purifier.fan_speed == MODEL_250S_AUTO_ECO_SPEED:
+                modes.insert(1, PRESET_AUTO_ECO)
             return modes
         # Default (400S, IconS, others)
         modes = list(DEFAULT_PRESET_MODES)
         if purifier.eco_mode:
-            modes.insert(1, "auto_eco")
+            modes.insert(1, PRESET_AUTO_ECO)
         return modes
 
     @property
@@ -103,7 +109,7 @@ class CowayFan(CowayEntity, FanEntity):
             if self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS:
                 return 0
         # Auto eco mode has no meaningful speed level
-        if self.preset_mode == "auto_eco":
+        if self.preset_mode == PRESET_AUTO_ECO:
             return 0
         return ranged_value_to_percentage(SPEED_RANGE, self.purifier.fan_speed)
 
@@ -115,27 +121,10 @@ class CowayFan(CowayEntity, FanEntity):
         model = purifier.device_attr.model
 
         if model_code == MODEL_AP_1512HHS:
-            if purifier.auto_mode:
-                return "auto"
-            if purifier.eco_mode:
-                return "eco"
-        elif model == MODEL_250S:
-            if purifier.fan_speed == 9:
-                return "auto_eco"
-            if purifier.auto_mode:
-                return "auto"
-            if purifier.night_mode:
-                return "night"
-            if purifier.rapid_mode:
-                return "rapid"
-        else:
-            if purifier.eco_mode:
-                return "auto_eco"
-            if purifier.auto_mode:
-                return "auto"
-            if purifier.night_mode:
-                return "night"
-        return None
+            return _detect_ap_1512hhs_preset(purifier)
+        if model == MODEL_250S:
+            return _detect_250s_preset(purifier)
+        return _detect_default_preset(purifier)
 
     async def _run_command(self, action: str, coro: Any) -> bool:
         """Await an API coroutine, logging and swallowing CowayError.
@@ -258,11 +247,31 @@ class CowayFan(CowayEntity, FanEntity):
 
         # mode -> (api method, (auto, eco, night, rapid), fan_speed)
         mode_map: dict[str, tuple[Any, tuple[bool, bool, bool, bool], int]] = {
-            "auto": (client.async_set_auto_mode, (True, False, False, False), 1),
-            "auto_eco": (client.async_set_eco_mode, (False, True, False, False), 0),
-            "night": (client.async_set_night_mode, (False, False, True, False), 0),
-            "eco": (client.async_set_eco_mode, (False, True, False, False), 0),
-            "rapid": (client.async_set_rapid_mode, (False, False, False, True), 0),
+            PRESET_AUTO: (
+                client.async_set_auto_mode,
+                (True, False, False, False),
+                1,
+            ),
+            PRESET_AUTO_ECO: (
+                client.async_set_eco_mode,
+                (False, True, False, False),
+                0,
+            ),
+            PRESET_NIGHT: (
+                client.async_set_night_mode,
+                (False, False, True, False),
+                0,
+            ),
+            PRESET_ECO: (
+                client.async_set_eco_mode,
+                (False, True, False, False),
+                0,
+            ),
+            PRESET_RAPID: (
+                client.async_set_rapid_mode,
+                (False, False, False, True),
+                0,
+            ),
         }
         spec = mode_map.get(preset_mode)
         if spec is None:
@@ -282,3 +291,36 @@ class CowayFan(CowayEntity, FanEntity):
 
         self.async_write_ha_state()
         self._schedule_refresh()
+
+
+def _detect_ap_1512hhs_preset(purifier: Any) -> str | None:
+    """Return the active preset for an AP-1512HHS purifier."""
+    if purifier.auto_mode:
+        return PRESET_AUTO
+    if purifier.eco_mode:
+        return PRESET_ECO
+    return None
+
+
+def _detect_250s_preset(purifier: Any) -> str | None:
+    """Return the active preset for an Airmega 250S purifier."""
+    if purifier.fan_speed == MODEL_250S_AUTO_ECO_SPEED:
+        return PRESET_AUTO_ECO
+    if purifier.auto_mode:
+        return PRESET_AUTO
+    if purifier.night_mode:
+        return PRESET_NIGHT
+    if purifier.rapid_mode:
+        return PRESET_RAPID
+    return None
+
+
+def _detect_default_preset(purifier: Any) -> str | None:
+    """Return the active preset for default (400S/IconS/other) purifiers."""
+    if purifier.eco_mode:
+        return PRESET_AUTO_ECO
+    if purifier.auto_mode:
+        return PRESET_AUTO
+    if purifier.night_mode:
+        return PRESET_NIGHT
+    return None

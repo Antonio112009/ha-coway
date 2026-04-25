@@ -15,6 +15,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import (
     CONF_POLLING_INTERVAL,
@@ -62,7 +63,7 @@ class CowayOptionsFlowHandler(OptionsFlow):
 class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Coway."""
 
-    VERSION = 1
+    VERSION = 2
 
     @staticmethod
     def async_get_options_flow(
@@ -82,6 +83,7 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
                 async with CowayClient(
                     user_input[CONF_USERNAME],
                     user_input[CONF_PASSWORD],
+                    session=async_create_clientsession(self.hass),
                     skip_password_change=user_input[CONF_SKIP_PASSWORD_CHANGE],
                 ) as client:
                     await client.login()
@@ -91,8 +93,8 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "password_expired"
             except CowayError:
                 errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("Unexpected error during Coway login: %s", err)
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(user_input[CONF_USERNAME].lower())

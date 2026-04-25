@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from typing import Any
+
+from pycoway import CowayError
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
@@ -25,6 +28,8 @@ from .devices import (
     MODEL_AP_1512HHS,
 )
 from .entity import CowayEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 SPEED_RANGE = (1, 3)
 
@@ -50,7 +55,7 @@ class CowayFan(CowayEntity, FanEntity):
         | FanEntityFeature.TURN_OFF
         | FanEntityFeature.PRESET_MODE
     )
-    _attr_speed_count = int_states_in_range = 3
+    _attr_speed_count = 3
     _attr_translation_key = "purifier"
 
     def __init__(
@@ -60,7 +65,7 @@ class CowayFan(CowayEntity, FanEntity):
     ) -> None:
         """Initialize the fan."""
         super().__init__(coordinator, device_id)
-        self._attr_unique_id = device_id
+        self._attr_unique_id = f"{device_id}_purifier"
 
     @property
     def preset_modes(self) -> list[str]:
@@ -132,6 +137,22 @@ class CowayFan(CowayEntity, FanEntity):
                 return "night"
         return None
 
+    async def _run_command(self, action: str, coro: Any) -> bool:
+        """Await an API coroutine, logging and swallowing CowayError.
+
+        Returns True on success, False on failure. On failure an immediate
+        coordinator refresh is scheduled so optimistic state is reverted.
+        """
+        try:
+            await coro
+        except CowayError as err:
+            _LOGGER.error(
+                "Failed to %s for %s: %s", action, self.entity_id, err
+            )
+            self._schedule_refresh()
+            return False
+        return True
+
     async def async_turn_on(
         self,
         percentage: int | None = None,
@@ -139,61 +160,74 @@ class CowayFan(CowayEntity, FanEntity):
         **kwargs: Any,
     ) -> None:
         """Turn on the purifier."""
-        if self._command_in_progress:
+        if self._command_lock.locked():
             return
-        self._command_in_progress = True
-        await self.coordinator.client.async_set_power(
-            self.purifier.device_attr, is_on=True
-        )
-        self.purifier.is_on = True
-        self.purifier.light_on = True
-        if preset_mode is not None:
-            await asyncio.sleep(COMMAND_CHAIN_DELAY)
-            await self._apply_preset_mode(preset_mode)
-            return
-        if percentage is not None:
-            await asyncio.sleep(COMMAND_CHAIN_DELAY)
-            await self._apply_speed(percentage)
-            return
-        self.async_write_ha_state()
-        self._schedule_refresh()
+        async with self._command_lock:
+            client = self.coordinator.client
+            attr = self.purifier.device_attr
+            if not await self._run_command(
+                "turn on", client.async_set_power(attr, is_on=True)
+            ):
+                return
+            self.purifier.is_on = True
+            self.purifier.light_on = True
+            if preset_mode is not None:
+                await asyncio.sleep(COMMAND_CHAIN_DELAY)
+                await self._apply_preset_mode(preset_mode)
+                return
+            if percentage is not None:
+                await asyncio.sleep(COMMAND_CHAIN_DELAY)
+                await self._apply_speed(percentage)
+                return
+            self.async_write_ha_state()
+            self._schedule_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
-        if self._command_in_progress:
+        if self._command_lock.locked():
             return
-        self._command_in_progress = True
-        await self.coordinator.client.async_set_power(
-            self.purifier.device_attr, is_on=False
-        )
-        self.purifier.is_on = False
-        self.purifier.light_on = False
-        self.async_write_ha_state()
-        self._schedule_refresh()
+        async with self._command_lock:
+            client = self.coordinator.client
+            attr = self.purifier.device_attr
+            if not await self._run_command(
+                "turn off", client.async_set_power(attr, is_on=False)
+            ):
+                return
+            self.purifier.is_on = False
+            self.purifier.light_on = False
+            self.async_write_ha_state()
+            self._schedule_refresh()
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the fan speed percentage."""
         if percentage == 0:
             await self.async_turn_off()
             return
-        if self._command_in_progress:
+        if self._command_lock.locked():
             return
-        self._command_in_progress = True
-        if not self.is_on:
-            await self.coordinator.client.async_set_power(
-                self.purifier.device_attr, is_on=True
-            )
-            self.purifier.is_on = True
-            self.purifier.light_on = True
-            await asyncio.sleep(COMMAND_CHAIN_DELAY)
-        await self._apply_speed(percentage)
+        async with self._command_lock:
+            if not self.is_on:
+                client = self.coordinator.client
+                attr = self.purifier.device_attr
+                if not await self._run_command(
+                    "power on", client.async_set_power(attr, is_on=True)
+                ):
+                    return
+                self.purifier.is_on = True
+                self.purifier.light_on = True
+                await asyncio.sleep(COMMAND_CHAIN_DELAY)
+            await self._apply_speed(percentage)
 
     async def _apply_speed(self, percentage: int) -> None:
         """Send the speed command and update optimistic state."""
         speed = math.ceil(percentage_to_ranged_value(SPEED_RANGE, percentage))
-        await self.coordinator.client.async_set_fan_speed(
-            self.purifier.device_attr, speed=str(speed)
-        )
+        if not await self._run_command(
+            "set speed",
+            self.coordinator.client.async_set_fan_speed(
+                self.purifier.device_attr, speed=str(speed)
+            ),
+        ):
+            return
         self.purifier.fan_speed = speed
         self.purifier.auto_mode = False
         self.purifier.night_mode = False
@@ -203,17 +237,20 @@ class CowayFan(CowayEntity, FanEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode."""
-        if self._command_in_progress:
+        if self._command_lock.locked():
             return
-        self._command_in_progress = True
-        if not self.is_on:
-            await self.coordinator.client.async_set_power(
-                self.purifier.device_attr, is_on=True
-            )
-            self.purifier.is_on = True
-            self.purifier.light_on = True
-            await asyncio.sleep(COMMAND_CHAIN_DELAY)
-        await self._apply_preset_mode(preset_mode)
+        async with self._command_lock:
+            if not self.is_on:
+                client = self.coordinator.client
+                attr = self.purifier.device_attr
+                if not await self._run_command(
+                    "power on", client.async_set_power(attr, is_on=True)
+                ):
+                    return
+                self.purifier.is_on = True
+                self.purifier.light_on = True
+                await asyncio.sleep(COMMAND_CHAIN_DELAY)
+            await self._apply_preset_mode(preset_mode)
 
     async def _apply_preset_mode(self, preset_mode: str) -> None:
         """Send the preset mode command and update optimistic state."""
@@ -221,41 +258,31 @@ class CowayFan(CowayEntity, FanEntity):
         client = self.coordinator.client
         purifier = self.purifier
 
-        if preset_mode == "auto":
-            await client.async_set_auto_mode(attr)
-            purifier.auto_mode = True
-            purifier.eco_mode = False
-            purifier.night_mode = False
-            purifier.rapid_mode = False
-            purifier.fan_speed = 1
-        elif preset_mode == "auto_eco":
-            await client.async_set_eco_mode(attr)
-            purifier.eco_mode = True
-            purifier.auto_mode = False
-            purifier.night_mode = False
-            purifier.rapid_mode = False
-            purifier.fan_speed = 0
-        elif preset_mode == "night":
-            await client.async_set_night_mode(attr)
-            purifier.night_mode = True
-            purifier.auto_mode = False
-            purifier.eco_mode = False
-            purifier.rapid_mode = False
-            purifier.fan_speed = 0
-        elif preset_mode == "eco":
-            await client.async_set_eco_mode(attr)
-            purifier.eco_mode = True
-            purifier.auto_mode = False
-            purifier.night_mode = False
-            purifier.rapid_mode = False
-            purifier.fan_speed = 0
-        elif preset_mode == "rapid":
-            await client.async_set_rapid_mode(attr)
-            purifier.rapid_mode = True
-            purifier.auto_mode = False
-            purifier.eco_mode = False
-            purifier.night_mode = False
-            purifier.fan_speed = 0
+        # mode -> (api method, (auto, eco, night, rapid), fan_speed)
+        mode_map: dict[str, tuple[Any, tuple[bool, bool, bool, bool], int]] = {
+            "auto": (client.async_set_auto_mode, (True, False, False, False), 1),
+            "auto_eco": (client.async_set_eco_mode, (False, True, False, False), 0),
+            "night": (client.async_set_night_mode, (False, False, True, False), 0),
+            "eco": (client.async_set_eco_mode, (False, True, False, False), 0),
+            "rapid": (client.async_set_rapid_mode, (False, False, False, True), 0),
+        }
+        spec = mode_map.get(preset_mode)
+        if spec is None:
+            _LOGGER.warning(
+                "Unsupported preset mode '%s' for %s", preset_mode, self.entity_id
+            )
+            return
+        api_call, (auto, eco, night, rapid), fan_speed = spec
+
+        if not await self._run_command(
+            f"set preset {preset_mode}", api_call(attr)
+        ):
+            return
+        purifier.auto_mode = auto
+        purifier.eco_mode = eco
+        purifier.night_mode = night
+        purifier.rapid_mode = rapid
+        purifier.fan_speed = fan_speed
 
         self.async_write_ha_state()
         self._schedule_refresh()

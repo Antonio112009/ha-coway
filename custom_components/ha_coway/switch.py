@@ -77,6 +77,7 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities: list[CowaySwitch] = []
     valid_unique_ids: set[str] = set()
+    current_device_ids = set(coordinator.data.purifiers)
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in SWITCH_DESCRIPTIONS:
             if not _is_switch_supported(description, purifier):
@@ -85,11 +86,21 @@ async def async_setup_entry(
             valid_unique_ids.add(unique_id)
             entities.append(CowaySwitch(coordinator, device_id, description))
 
-    # Remove stale switch entities that are no longer provided
+    # Remove stale switch entities for the *current* devices only. Entities
+    # belonging to devices that are missing from this update are left intact in
+    # case the device is temporarily unreachable.
     ent_reg = er.async_get(hass)
     for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if ent_entry.domain == "switch" and ent_entry.unique_id not in valid_unique_ids:
-            ent_reg.async_remove(ent_entry.entity_id)
+        if ent_entry.domain != "switch":
+            continue
+        if ent_entry.unique_id in valid_unique_ids:
+            continue
+        if not any(
+            ent_entry.unique_id.startswith(f"{device_id}_")
+            for device_id in current_device_ids
+        ):
+            continue
+        ent_reg.async_remove(ent_entry.entity_id)
 
     async_add_entities(entities)
 

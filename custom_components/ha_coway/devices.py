@@ -18,13 +18,20 @@ LIGHT_MODE_MODELS: frozenset[str] = frozenset({MODEL_250S, MODEL_ICONS})
 
 # ── Fan preset modes ─────────────────────────────────────────────────
 
+PRESET_AUTO = "auto"
+PRESET_ECO = "eco"
+PRESET_NIGHT = "night"
+PRESET_RAPID = "rapid"
+PRESET_AUTO_ECO = "auto_eco"
+
 # Base preset modes per model (dynamic modes like auto_eco added at runtime).
-AP_1512HHS_PRESET_MODES: list[str] = ["auto", "eco"]
-MODEL_250S_PRESET_MODES: list[str] = ["auto", "night", "rapid"]
-DEFAULT_PRESET_MODES: list[str] = ["auto", "night"]
+AP_1512HHS_PRESET_MODES: list[str] = [PRESET_AUTO, PRESET_ECO]
+MODEL_250S_PRESET_MODES: list[str] = [PRESET_AUTO, PRESET_NIGHT, PRESET_RAPID]
+DEFAULT_PRESET_MODES: list[str] = [PRESET_AUTO, PRESET_NIGHT]
 
 # 250S fan speeds that are not user-selectable (rapid=5, smart eco=9).
 MODEL_250S_HIDDEN_SPEEDS: frozenset[int] = frozenset({5, 9})
+MODEL_250S_AUTO_ECO_SPEED: int = 9
 
 # ── Light mode configuration ─────────────────────────────────────────
 

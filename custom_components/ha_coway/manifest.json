@@ -14,7 +14,7 @@
     "pycoway"
   ],
   "requirements": [
-    "pycoway==2.0.1"
+    "pycoway==2.0.2"
   ],
   "version": "1.2.2"
 }

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+import logging
+from datetime import datetime
 
 from pycoway import CowayPurifier
 
@@ -13,6 +15,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import COMMAND_REFRESH_DELAY, DOMAIN
 from .coordinator import CowayDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
@@ -29,8 +33,9 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         super().__init__(coordinator)
         self._device_id = device_id
         self._cancel_refresh: CALLBACK_TYPE | None = None
-        self._command_in_progress = False
-        purifier = self.purifier
+        self._command_lock = asyncio.Lock()
+        purifier = coordinator.data.purifiers[device_id]
+        self._last_purifier: CowayPurifier = purifier
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_id)},
             manufacturer="Coway",
@@ -41,12 +46,24 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
 
     @property
     def purifier(self) -> CowayPurifier:
-        """Return the purifier data for this device."""
-        return self.coordinator.data.purifiers[self._device_id]
+        """Return the latest purifier data, or the last-seen snapshot.
+
+        When the device temporarily disappears from coordinator data we still
+        need to return *something* sensible because Home Assistant reads
+        capability properties (e.g. ``preset_modes``) even while the entity is
+        marked unavailable.
+        """
+        purifier = self.coordinator.data.purifiers.get(self._device_id)
+        if purifier is None:
+            return self._last_purifier
+        self._last_purifier = purifier
+        return purifier
 
     @property
     def available(self) -> bool:
         """Return True when the purifier is connected to Coway servers."""
+        if self._device_id not in self.coordinator.data.purifiers:
+            return False
         return super().available and self.purifier.network_status
 
     @callback
@@ -55,9 +72,8 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         if self._cancel_refresh is not None:
             self._cancel_refresh()
 
-        async def _refresh(_now: Any) -> None:
+        async def _refresh(_now: datetime) -> None:
             self._cancel_refresh = None
-            self._command_in_progress = False
             await self.coordinator.async_request_refresh()
 
         self._cancel_refresh = async_call_later(
@@ -69,4 +85,3 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         if self._cancel_refresh is not None:
             self._cancel_refresh()
             self._cancel_refresh = None
-        self._command_in_progress = False

@@ -10,17 +10,20 @@ from pycoway import CowayError, CowayPurifier, DeviceAttributes
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import (
     AP_1512HHS_UK_EU_CODES,
     API_TO_LIGHT_MODE,
-    LIGHT_MODE_MODELS,
+    FAMILY_250S,
     LIGHT_MODE_OPTIONS_250S,
     LIGHT_MODE_OPTIONS_ICONS,
     LIGHT_MODE_TO_API,
-    MODEL_250S,
+    detect_family,
+    uses_light_mode_select,
 )
 from .entity import CowayEntity
 
@@ -48,7 +51,7 @@ TIMER_DESCRIPTION = CowaySelectEntityDescription(
     translation_key="timer",
     options=TIMER_OPTIONS,
     current_fn=lambda p: (
-        ("off" if p.timer == "0" else p.timer) if p.timer is not None else None
+        ("off" if p.timer == 0 else str(p.timer)) if p.timer is not None else None
     ),
     select_fn=lambda c, a, v: c.client.async_set_timer(
         a, time="0" if v == "off" else v
@@ -93,13 +96,15 @@ def _get_select_descriptions(
 ) -> list[CowaySelectEntityDescription]:
     """Build model-specific select descriptions for a purifier."""
     descriptions: list[CowaySelectEntityDescription] = list(COMMON_DESCRIPTIONS)
-    model = purifier.device_attr.model
-    code = purifier.device_attr.code
+    attr = purifier.device_attr
+    code = attr.code
 
     # Light mode select for 250S/IconS (these use multi-mode light instead of switch)
-    if model in LIGHT_MODE_MODELS:
+    if uses_light_mode_select(attr):
         options = (
-            LIGHT_MODE_OPTIONS_250S if model == MODEL_250S else LIGHT_MODE_OPTIONS_ICONS
+            LIGHT_MODE_OPTIONS_250S
+            if detect_family(attr) == FAMILY_250S
+            else LIGHT_MODE_OPTIONS_ICONS
         )
         descriptions.append(
             CowaySelectEntityDescription(
@@ -118,10 +123,7 @@ def _get_select_descriptions(
         )
 
     # Pre-filter frequency: exclude AP-1512HHS UK/EU models
-    if (
-        purifier.pre_filter_change_frequency is not None
-        and code not in AP_1512HHS_UK_EU_CODES
-    ):
+    if code not in AP_1512HHS_UK_EU_CODES:
         descriptions.append(PRE_FILTER_FREQUENCY_DESCRIPTION)
 
     return descriptions
@@ -134,10 +136,38 @@ async def async_setup_entry(
 ) -> None:
     """Set up Coway select entities."""
     coordinator = entry.runtime_data
+    ent_reg = er.async_get(hass)
     entities: list[CowaySelect] = []
+    valid_unique_ids: set[str] = set()
+    current_device_ids = set(coordinator.data.purifiers)
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in _get_select_descriptions(purifier):
+            unique_id = f"{device_id}_{description.key}"
+            valid_unique_ids.add(unique_id)
+            # A None current value normally means the model lacks the feature,
+            # but it can also be a transient gap (device off or unreachable).
+            # Keep entities that already exist in the registry.
+            if description.current_fn(
+                purifier
+            ) is None and not ent_reg.async_get_entity_id("select", DOMAIN, unique_id):
+                continue
             entities.append(CowaySelect(coordinator, device_id, description))
+
+    # Remove select entities of the *current* devices whose descriptions no
+    # longer apply. Entities belonging to devices that are missing from this
+    # update are left intact in case the device is temporarily unreachable.
+    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent_entry.domain != "select":
+            continue
+        if ent_entry.unique_id in valid_unique_ids:
+            continue
+        if not any(
+            ent_entry.unique_id.startswith(f"{device_id}_")
+            for device_id in current_device_ids
+        ):
+            continue
+        ent_reg.async_remove(ent_entry.entity_id)
+
     async_add_entities(entities)
 
 

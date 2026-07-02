@@ -16,7 +16,6 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .const import (
     CONF_POLLING_INTERVAL,
@@ -156,10 +155,13 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
         suitable for passing to ``async_show_form``.
         """
         try:
+            # No session is passed on purpose: the client then owns its
+            # session and the context manager closes it. A session created
+            # via the aiohttp helpers would outlive the flow (it is only
+            # auto-closed on Home Assistant stop), leaking one per attempt.
             async with CowayClient(
                 username,
                 password,
-                session=async_create_clientsession(self.hass),
                 skip_password_change=skip_password_change,
             ) as client:
                 await client.login()

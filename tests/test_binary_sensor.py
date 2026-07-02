@@ -21,12 +21,15 @@ async def test_network_sensor_on_when_connected(hass: HomeAssistant) -> None:
 
 
 async def test_network_sensor_off_when_disconnected(hass: HomeAssistant) -> None:
-    """Network status binary sensor is 'off' when network_status is False."""
+    """Network status binary sensor is 'off' when network_status is False.
+
+    Unlike other Coway entities, the connectivity sensor must stay
+    available while the purifier is offline — reporting that state is
+    its purpose.
+    """
     data = make_purifier_data(make_purifier(network_status=False))
     await setup_coway_integration(hass, data)
 
     state = hass.states.get(BINARY_NETWORK_ENTITY)
     assert state is not None
-    # When network_status is False, the entity itself is unavailable
-    # because CowayEntity.available checks network_status
-    assert state.state in ("off", "unavailable")
+    assert state.state == "off"

@@ -24,8 +24,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
-from .devices import AP_1512HHS_UK_EU_CODES, MODEL_250S
+from .devices import AP_1512HHS_UK_EU_CODES, FAMILY_250S, detect_family
 from .entity import CowayEntity
 
 AQ_GRADE_MAP = {
@@ -174,7 +175,7 @@ def _get_sensor_descriptions(
     purifier: CowayPurifier,
 ) -> list[CowaySensorEntityDescription]:
     """Build model-specific sensor descriptions for a purifier."""
-    model = purifier.device_attr.model
+    family = detect_family(purifier.device_attr)
     code = purifier.device_attr.code
     product_name = purifier.device_attr.product_name
     is_uk_eu_ap = code in AP_1512HHS_UK_EU_CODES
@@ -198,7 +199,7 @@ def _get_sensor_descriptions(
     )
 
     # Lux — 250S has an inverted sensor
-    if model == MODEL_250S:
+    if family == FAMILY_250S:
         descriptions.append(LUX_INVERTED_DESCRIPTION)
     else:
         descriptions.append(LUX_DESCRIPTION)
@@ -214,22 +215,28 @@ async def async_setup_entry(
 ) -> None:
     """Set up Coway sensor entities."""
     coordinator = entry.runtime_data
+    ent_reg = er.async_get(hass)
     entities: list[CowaySensor] = []
     valid_unique_ids: set[str] = set()
     current_device_ids = set(coordinator.data.purifiers)
     for device_id, purifier in coordinator.data.purifiers.items():
         for description in _get_sensor_descriptions(purifier):
             unique_id = f"{device_id}_{description.key}"
-            if description.value_fn(purifier) is None:
-                continue
             valid_unique_ids.add(unique_id)
+            # A None value normally means the model lacks this sensor — but it
+            # can also be a transient gap (device off or unreachable). Keep
+            # entities that already exist in the registry so history and
+            # customizations survive a badly-timed reload.
+            if description.value_fn(
+                purifier
+            ) is None and not ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id):
+                continue
             entities.append(CowaySensor(coordinator, device_id, description))
 
-    # Remove stale sensor entities for the *current* devices that are no longer
-    # provided by the cloud. We deliberately leave entities belonging to devices
-    # that are missing from this update untouched, in case the device is just
-    # temporarily unreachable.
-    ent_reg = er.async_get(hass)
+    # Remove sensor entities of the *current* devices whose descriptions no
+    # longer apply (e.g. renamed keys after an update). We deliberately leave
+    # entities belonging to devices that are missing from this update
+    # untouched, in case the device is just temporarily unreachable.
     for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
         if ent_entry.domain != "sensor":
             continue

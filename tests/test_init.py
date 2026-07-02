@@ -34,9 +34,9 @@ async def test_setup_entry_auth_failure(
     mock_coordinator_client: AsyncMock,
 ) -> None:
     """Test setup fails when authentication fails."""
-    from pycoway import CowayError
+    from pycoway import AuthError
 
-    mock_coordinator_client.login.side_effect = CowayError("Login failed")
+    mock_coordinator_client.login.side_effect = AuthError("Login failed")
 
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
     entry.add_to_hass(hass)
@@ -45,6 +45,24 @@ async def test_setup_entry_auth_failure(
     await hass.async_block_till_done()
 
     assert entry.state is ConfigEntryState.SETUP_ERROR
+
+
+async def test_setup_entry_transient_failure_retries(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A non-auth CowayError during setup leads to retry, not reauth."""
+    from pycoway import CowayError
+
+    mock_coordinator_client.login.side_effect = CowayError("Rate limited")
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 async def test_unload_entry(

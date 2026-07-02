@@ -54,7 +54,7 @@ def make_purifier(
         light_on=True,
         light_mode=0,
         button_lock=0,
-        timer="0",
+        timer=0,
         timer_remaining=0,
         pre_filter_pct=85,
         max2_pct=90,

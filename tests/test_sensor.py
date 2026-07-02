@@ -208,6 +208,50 @@ async def test_sensor_with_none_value_not_created(hass: HomeAssistant) -> None:
     assert hass.states.get(f"{SENSOR_PREFIX}_co2") is None
 
 
+async def test_registered_sensor_survives_transient_none(
+    hass: HomeAssistant,
+) -> None:
+    """An already-registered sensor is kept when its value is transiently None."""
+    from unittest.mock import AsyncMock, patch
+
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.ha_coway.const import DOMAIN
+
+    from .conftest import MOCK_ENTRY_DATA
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    # The sensor was created in a previous run, while the value was present.
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        domain="sensor",
+        platform=DOMAIN,
+        unique_id="ABC123_co2",
+        config_entry=entry,
+        suggested_object_id="living_room_purifier_co2",
+    )
+
+    # This run, the device reports None (e.g. it is off or unreachable).
+    data = make_purifier_data(make_purifier(carbon_dioxide=None))
+    with patch(
+        "custom_components.ha_coway.coordinator.CowayClient",
+    ) as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.async_get_purifiers_data = AsyncMock(return_value=data)
+        mock_client_class.return_value = mock_client
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Registry entry must survive and the entity must exist (state unknown).
+    assert ent_reg.async_get_entity_id("sensor", DOMAIN, "ABC123_co2") is not None
+    state = hass.states.get(f"{SENSOR_PREFIX}_co2")
+    assert state is not None
+    assert state.state == "unknown"
+
+
 async def test_indoor_aq_enum_value(hass: HomeAssistant) -> None:
     """indoor_aq sensor reports the grade label."""
     data = make_purifier_data(make_purifier(aq_grade=3))

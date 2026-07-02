@@ -31,6 +31,9 @@ class CowayNetworkSensor(CowayEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_translation_key = "network_status"
+    # Stay available while the purifier is offline — reporting the
+    # disconnected state is this sensor's entire purpose.
+    _requires_connection = False
 
     def __init__(
         self,

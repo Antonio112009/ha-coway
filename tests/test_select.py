@@ -93,28 +93,34 @@ def test_pre_filter_frequency_excluded_for_uk_eu() -> None:
     assert "pre_filter_frequency" not in keys
 
 
-def test_pre_filter_frequency_excluded_when_none() -> None:
-    """pre_filter_frequency excluded when the purifier reports None."""
-    purifier = make_purifier(pre_filter_change_frequency=None)
-    descs = _get_select_descriptions(purifier)
-    keys = [d.key for d in descs]
-    assert "pre_filter_frequency" not in keys
+async def test_pre_filter_frequency_not_created_when_none(
+    hass: HomeAssistant,
+) -> None:
+    """The pre_filter_frequency entity is not created when the value is None.
+
+    The description itself stays applicable (so a registered entity is not
+    deleted on a transient None); only creation is skipped.
+    """
+    data = make_purifier_data(make_purifier(pre_filter_change_frequency=None))
+    await setup_coway_integration(hass, data)
+
+    assert hass.states.get(PRE_FILTER_FREQ_ENTITY) is None
 
 
 # ── Select current_fn unit tests ──────────────────────────────────────
 
 
 def test_timer_current_fn_off() -> None:
-    """Timer returns 'off' when timer value is '0'."""
-    purifier = make_purifier(timer="0")
+    """Timer returns 'off' when timer value is 0."""
+    purifier = make_purifier(timer=0)
     descs = _get_select_descriptions(purifier)
     timer_desc = next(d for d in descs if d.key == "timer")
     assert timer_desc.current_fn(purifier) == "off"
 
 
 def test_timer_current_fn_active() -> None:
-    """Timer returns the raw value when timer is set."""
-    purifier = make_purifier(timer="120")
+    """Timer returns the stringified value when timer is set."""
+    purifier = make_purifier(timer=120)
     descs = _get_select_descriptions(purifier)
     timer_desc = next(d for d in descs if d.key == "timer")
     assert timer_desc.current_fn(purifier) == "120"
@@ -166,7 +172,7 @@ async def test_timer_select_exists(hass: HomeAssistant) -> None:
 
     state = hass.states.get(TIMER_ENTITY)
     assert state is not None
-    assert state.state == "off"  # timer="0" maps to "off"
+    assert state.state == "off"  # timer=0 maps to "off"
 
 
 async def test_sensitivity_select_value(hass: HomeAssistant) -> None:
@@ -213,7 +219,7 @@ async def test_select_option_calls_api(hass: HomeAssistant) -> None:
 
 async def test_select_optimistic_value(hass: HomeAssistant) -> None:
     """After selecting an option, the optimistic value is reflected immediately."""
-    data = make_purifier_data(make_purifier(timer="0"))
+    data = make_purifier_data(make_purifier(timer=0))
     entry, mock_client = await setup_coway_integration(hass, data)
 
     await hass.services.async_call(

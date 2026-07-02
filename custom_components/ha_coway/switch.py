@@ -15,7 +15,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
-from .devices import LIGHT_MODE_MODELS, MODEL_250S
+from .devices import FAMILY_250S, detect_family, uses_light_mode_select
 from .entity import CowayEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,8 +32,7 @@ class CowaySwitchEntityDescription(SwitchEntityDescription):
     turn_off_fn: Callable[
         [CowayDataUpdateCoordinator, DeviceAttributes], Awaitable[None]
     ]
-    supported_models: frozenset[str] | None = field(default=None)
-    excluded_models: frozenset[str] | None = field(default=None)
+    is_supported: Callable[[DeviceAttributes], bool] = field(default=lambda attr: True)
 
 
 SWITCH_DESCRIPTIONS: tuple[CowaySwitchEntityDescription, ...] = (
@@ -43,7 +42,8 @@ SWITCH_DESCRIPTIONS: tuple[CowaySwitchEntityDescription, ...] = (
         is_on_fn=lambda p: p.light_on,
         turn_on_fn=lambda c, a: c.client.async_set_light(a, light_on=True),
         turn_off_fn=lambda c, a: c.client.async_set_light(a, light_on=False),
-        excluded_models=LIGHT_MODE_MODELS,
+        # 250S/IconS use a multi-mode light select instead.
+        is_supported=lambda attr: not uses_light_mode_select(attr),
     ),
     CowaySwitchEntityDescription(
         key="button_lock",
@@ -51,7 +51,7 @@ SWITCH_DESCRIPTIONS: tuple[CowaySwitchEntityDescription, ...] = (
         is_on_fn=lambda p: p.button_lock == 1 if p.button_lock is not None else None,
         turn_on_fn=lambda c, a: c.client.async_set_button_lock(a, value="1"),
         turn_off_fn=lambda c, a: c.client.async_set_button_lock(a, value="0"),
-        supported_models=frozenset({MODEL_250S}),
+        is_supported=lambda attr: detect_family(attr) == FAMILY_250S,
     ),
 )
 
@@ -60,12 +60,7 @@ def _is_switch_supported(
     description: CowaySwitchEntityDescription, purifier: CowayPurifier
 ) -> bool:
     """Check whether a switch description applies to the given purifier."""
-    model = purifier.device_attr.model
-    if description.supported_models is not None:
-        return model in description.supported_models
-    if description.excluded_models is not None:
-        return model not in description.excluded_models
-    return True
+    return description.is_supported(purifier.device_attr)
 
 
 async def async_setup_entry(

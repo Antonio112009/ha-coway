@@ -120,7 +120,7 @@ async def test_select_option_api_error_does_not_change_state(
     hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A CowayError on select must not change current_option optimistically."""
-    data = make_purifier_data(make_purifier(timer="0"))
+    data = make_purifier_data(make_purifier(timer=0))
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_timer.side_effect = CowayError("boom")
 

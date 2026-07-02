@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pycoway import CowayError, PasswordExpired
+from pycoway import AuthError, CowayError, PasswordExpired
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -38,8 +38,8 @@ async def test_coordinator_setup_auth_failed(
     hass: HomeAssistant,
     mock_coordinator_client: AsyncMock,
 ) -> None:
-    """Test coordinator raises ConfigEntryAuthFailed on CowayError during login."""
-    mock_coordinator_client.login.side_effect = CowayError("Login failed")
+    """Test coordinator raises ConfigEntryAuthFailed on AuthError during login."""
+    mock_coordinator_client.login.side_effect = AuthError("Login failed")
 
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
     entry.add_to_hass(hass)
@@ -47,6 +47,22 @@ async def test_coordinator_setup_auth_failed(
     coordinator = CowayDataUpdateCoordinator(hass, entry)
 
     with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_setup()
+
+
+async def test_coordinator_setup_transient_error_is_not_auth_failure(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A non-auth CowayError during login raises UpdateFailed (setup retry)."""
+    mock_coordinator_client.login.side_effect = CowayError("Server maintenance")
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    coordinator = CowayDataUpdateCoordinator(hass, entry)
+
+    with pytest.raises(UpdateFailed):
         await coordinator._async_setup()
 
 
@@ -98,6 +114,42 @@ async def test_coordinator_update_failure(
     coordinator = CowayDataUpdateCoordinator(hass, entry)
 
     with pytest.raises(UpdateFailed, match="Error fetching purifier data"):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_update_auth_error_triggers_reauth(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """An AuthError during data fetch raises ConfigEntryAuthFailed (reauth)."""
+    mock_coordinator_client.async_get_purifiers_data.side_effect = AuthError(
+        "Token invalid"
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    coordinator = CowayDataUpdateCoordinator(hass, entry)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_update_password_expired_triggers_reauth(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A PasswordExpired during data fetch raises ConfigEntryAuthFailed."""
+    mock_coordinator_client.async_get_purifiers_data.side_effect = PasswordExpired(
+        "Password expired"
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    coordinator = CowayDataUpdateCoordinator(hass, entry)
+
+    with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
 
 

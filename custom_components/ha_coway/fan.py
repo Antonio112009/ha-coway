@@ -22,16 +22,17 @@ from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import (
     AP_1512HHS_PRESET_MODES,
     DEFAULT_PRESET_MODES,
-    MODEL_250S,
+    FAMILY_250S,
+    FAMILY_AP_1512HHS,
     MODEL_250S_AUTO_ECO_SPEED,
     MODEL_250S_HIDDEN_SPEEDS,
     MODEL_250S_PRESET_MODES,
-    MODEL_AP_1512HHS,
     PRESET_AUTO,
     PRESET_AUTO_ECO,
     PRESET_ECO,
     PRESET_NIGHT,
     PRESET_RAPID,
+    detect_family,
 )
 from .entity import CowayEntity
 
@@ -77,12 +78,11 @@ class CowayFan(CowayEntity, FanEntity):
     def preset_modes(self) -> list[str]:
         """Return the available preset modes based on purifier model."""
         purifier = self.purifier
-        model_code = purifier.device_attr.model_code
-        model = purifier.device_attr.model
+        family = detect_family(purifier.device_attr)
 
-        if model_code == MODEL_AP_1512HHS:
+        if family == FAMILY_AP_1512HHS:
             return list(AP_1512HHS_PRESET_MODES)
-        if model == MODEL_250S:
+        if family == FAMILY_250S:
             modes = list(MODEL_250S_PRESET_MODES)
             if purifier.fan_speed == MODEL_250S_AUTO_ECO_SPEED:
                 modes.insert(1, PRESET_AUTO_ECO)
@@ -105,7 +105,7 @@ class CowayFan(CowayEntity, FanEntity):
             return 0
         # 250S reports speed 5 (rapid) and 9 (smart eco) which are not
         # user-selectable speeds — show 0% to match the IoCare app.
-        if self.purifier.device_attr.model == MODEL_250S:
+        if detect_family(self.purifier.device_attr) == FAMILY_250S:
             if self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS:
                 return 0
         # Auto eco mode has no meaningful speed level
@@ -117,12 +117,11 @@ class CowayFan(CowayEntity, FanEntity):
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
         purifier = self.purifier
-        model_code = purifier.device_attr.model_code
-        model = purifier.device_attr.model
+        family = detect_family(purifier.device_attr)
 
-        if model_code == MODEL_AP_1512HHS:
+        if family == FAMILY_AP_1512HHS:
             return _detect_ap_1512hhs_preset(purifier)
-        if model == MODEL_250S:
+        if family == FAMILY_250S:
             return _detect_250s_preset(purifier)
         return _detect_default_preset(purifier)
 
@@ -219,6 +218,7 @@ class CowayFan(CowayEntity, FanEntity):
         self.purifier.auto_mode = False
         self.purifier.night_mode = False
         self.purifier.eco_mode = False
+        self.purifier.rapid_mode = False
         self.async_write_ha_state()
         self._schedule_refresh()
 

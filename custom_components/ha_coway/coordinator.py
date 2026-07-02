@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from pycoway import CowayClient, CowayError, PasswordExpired, PurifierData
+from pycoway import AuthError, CowayClient, CowayError, PasswordExpired, PurifierData
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -51,7 +51,13 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
         )
 
     async def _async_setup(self) -> None:
-        """Authenticate with the Coway API."""
+        """Authenticate with the Coway API.
+
+        Only genuine credential problems raise ConfigEntryAuthFailed;
+        transient failures (connection issues, rate limiting, server
+        maintenance) raise UpdateFailed so setup is retried instead of
+        prompting the user to re-authenticate.
+        """
         try:
             await self.client.login()
         except PasswordExpired as err:
@@ -59,19 +65,27 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
                 translation_domain=DOMAIN,
                 translation_key="password_expired",
             ) from err
-        except CowayError as err:
+        except AuthError as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,
                 translation_key="auth_failed",
             ) from err
+        except CowayError as err:
+            raise UpdateFailed(f"Error connecting to the Coway API: {err}") from err
 
     async def _async_update_data(self) -> PurifierData:
         """Fetch the latest purifier data."""
         try:
             return await self.client.async_get_purifiers_data()
+        except PasswordExpired as err:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="password_expired",
+            ) from err
+        except AuthError as err:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from err
         except CowayError as err:
             raise UpdateFailed(f"Error fetching purifier data: {err}") from err
-
-    async def async_shutdown(self) -> None:
-        """Shut down the coordinator."""
-        await super().async_shutdown()

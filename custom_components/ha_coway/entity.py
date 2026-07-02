@@ -23,6 +23,10 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
     """Base class for Coway entities."""
 
     _attr_has_entity_name = True
+    # Most entities are meaningless while the purifier is offline. The
+    # connectivity binary sensor overrides this so it can report
+    # "disconnected" instead of going unavailable.
+    _requires_connection = True
 
     def __init__(
         self,
@@ -39,7 +43,13 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_id)},
             manufacturer="Coway",
-            model=purifier.device_attr.model,
+            # pycoway leaves ``model`` unset on the IoT path; fall back to
+            # the other identity fields so the device registry shows something.
+            model=(
+                purifier.device_attr.model
+                or purifier.device_attr.prod_name_full
+                or purifier.device_attr.model_code
+            ),
             name=purifier.device_attr.name,
             sw_version=purifier.mcu_version,
         )
@@ -64,7 +74,9 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         """Return True when the purifier is connected to Coway servers."""
         if self._device_id not in self.coordinator.data.purifiers:
             return False
-        return super().available and self.purifier.network_status
+        if not super().available:
+            return False
+        return not self._requires_connection or bool(self.purifier.network_status)
 
     @callback
     def _schedule_refresh(self) -> None:

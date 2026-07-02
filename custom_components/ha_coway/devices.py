@@ -1,20 +1,45 @@
 """Model-specific device configuration for Coway purifiers."""
 
-from pycoway import LightMode
+from pycoway import DeviceAttributes, LightMode
 
 # ── Model identification ──────────────────────────────────────────────
+#
+# pycoway's IoT path never populates ``DeviceAttributes.model``, and which
+# of the remaining identity fields carries a recognisable model name varies
+# by API response. Families are therefore detected by scanning every
+# identity field for a distinctive fragment.
 
-MODEL_AP_1512HHS = "AP-1512HHS"
-MODEL_250S = "Airmega 250S"
-MODEL_ICONS = "Airmega IconS"
-MODEL_400S = "Airmega 400S"
+FAMILY_AP_1512HHS = "ap_1512hhs"
+FAMILY_250S = "250s"
+FAMILY_ICONS = "icons"
+
+_FAMILY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("1512", FAMILY_AP_1512HHS),
+    ("250", FAMILY_250S),
+    ("icon", FAMILY_ICONS),
+)
+
+
+def detect_family(attr: DeviceAttributes) -> str | None:
+    """Return the model family, or None for models with default behavior."""
+    for value in (attr.model, attr.model_code, attr.product_name, attr.prod_name_full):
+        if not value:
+            continue
+        lowered = value.lower()
+        for pattern, family in _FAMILY_PATTERNS:
+            if pattern in lowered:
+                return family
+    return None
+
+
+def uses_light_mode_select(attr: DeviceAttributes) -> bool:
+    """Multi-mode light models get a select instead of an on/off switch."""
+    return detect_family(attr) in (FAMILY_250S, FAMILY_ICONS)
+
 
 # AP-1512HHS UK/EU device codes — these lack a pre-filter wash setting
 # and use different filter names (Charcoal / HEPA instead of Pre / MAX2).
 AP_1512HHS_UK_EU_CODES: frozenset[str] = frozenset({"02FMG", "02FMF", "02FWN"})
-
-# Models that use a multi-mode light select instead of a simple on/off switch.
-LIGHT_MODE_MODELS: frozenset[str] = frozenset({MODEL_250S, MODEL_ICONS})
 
 # ── Fan preset modes ─────────────────────────────────────────────────
 

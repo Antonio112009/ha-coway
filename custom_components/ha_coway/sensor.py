@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from pycoway import CowayPurifier
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -23,11 +21,14 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from pycoway import CowayPurifier
 
 from .const import DOMAIN
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import AP_1512HHS_UK_EU_CODES, FAMILY_250S, detect_family
 from .entity import CowayEntity
+
+PARALLEL_UPDATES = 0  # Read-only platform; data arrives via the coordinator
 
 AQ_GRADE_MAP = {
     1: "good",

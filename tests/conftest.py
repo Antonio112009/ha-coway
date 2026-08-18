@@ -5,12 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from pycoway import CowayPurifier, DeviceAttributes, PurifierData
-
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-
+from pycoway import CowayPurifier, DeviceAttributes, PurifierData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_coway.const import CONF_SKIP_PASSWORD_CHANGE, DOMAIN

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from pycoway import AuthError, CowayError, PasswordExpired
-
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pycoway import AuthError, CowayError, PasswordExpired
 
 from custom_components.ha_coway.const import DOMAIN
 

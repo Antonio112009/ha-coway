@@ -10,7 +10,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_coway.switch import _is_switch_supported, SWITCH_DESCRIPTIONS
+from custom_components.ha_coway.switch import SWITCH_DESCRIPTIONS, _is_switch_supported
 
 from .conftest import make_purifier, make_purifier_data, setup_coway_integration
 

@@ -49,6 +49,12 @@
     "auth_failed": {
       "message": "Authentication failed. Please re-configure the integration."
     },
+    "command_failed": {
+      "message": "Failed to {action}: {error}"
+    },
+    "command_in_progress": {
+      "message": "Another command is still running for this device. Try again in a moment."
+    },
     "password_expired": {
       "message": "Coway is requesting a password change because the password has not been changed for 60 days or more. Change your password in the Coway app or enable the 'Skip password change prompt' option."
     }

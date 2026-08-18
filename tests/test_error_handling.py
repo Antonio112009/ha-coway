@@ -5,23 +5,28 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from pycoway import CowayError
-
 from homeassistant.components.fan import (
     ATTR_PERCENTAGE,
-    DOMAIN as FAN_DOMAIN,
     SERVICE_SET_PERCENTAGE,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
 )
+from homeassistant.components.fan import (
+    DOMAIN as FAN_DOMAIN,
+)
 from homeassistant.components.select import (
     DOMAIN as SELECT_DOMAIN,
+)
+from homeassistant.components.select import (
     SERVICE_SELECT_OPTION,
 )
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
-from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_ON as SVC_TURN_ON
+from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import SERVICE_TURN_ON as SVC_TURN_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
+from pycoway import CowayError
 
 from custom_components.ha_coway.const import DOMAIN
 
@@ -43,12 +48,13 @@ async def test_fan_turn_on_api_error_does_not_change_state(
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_power.side_effect = CowayError("boom")
 
-    await hass.services.async_call(
-        FAN_DOMAIN,
-        SERVICE_TURN_ON,
-        {ATTR_ENTITY_ID: FAN_ENTITY},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            FAN_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: FAN_ENTITY},
+            blocking=True,
+        )
 
     state = hass.states.get(FAN_ENTITY)
     assert state.state == "off"  # unchanged
@@ -63,12 +69,13 @@ async def test_fan_turn_off_api_error_does_not_change_state(
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_power.side_effect = CowayError("boom")
 
-    await hass.services.async_call(
-        FAN_DOMAIN,
-        SERVICE_TURN_OFF,
-        {ATTR_ENTITY_ID: FAN_ENTITY},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            FAN_DOMAIN,
+            SERVICE_TURN_OFF,
+            {ATTR_ENTITY_ID: FAN_ENTITY},
+            blocking=True,
+        )
 
     state = hass.states.get(FAN_ENTITY)
     assert state.state == "on"  # unchanged
@@ -83,12 +90,13 @@ async def test_fan_set_speed_api_error_does_not_change_state(
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_fan_speed.side_effect = CowayError("boom")
 
-    await hass.services.async_call(
-        FAN_DOMAIN,
-        SERVICE_SET_PERCENTAGE,
-        {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 100},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            FAN_DOMAIN,
+            SERVICE_SET_PERCENTAGE,
+            {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 100},
+            blocking=True,
+        )
 
     state = hass.states.get(FAN_ENTITY)
     # fan_speed=1 -> 33%
@@ -104,12 +112,13 @@ async def test_switch_turn_on_api_error_does_not_change_state(
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_light.side_effect = CowayError("boom")
 
-    await hass.services.async_call(
-        SWITCH_DOMAIN,
-        SVC_TURN_ON,
-        {ATTR_ENTITY_ID: LIGHT_ENTITY},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            SWITCH_DOMAIN,
+            SVC_TURN_ON,
+            {ATTR_ENTITY_ID: LIGHT_ENTITY},
+            blocking=True,
+        )
 
     state = hass.states.get(LIGHT_ENTITY)
     assert state.state == "off"  # unchanged
@@ -124,12 +133,13 @@ async def test_select_option_api_error_does_not_change_state(
     _, mock_client = await setup_coway_integration(hass, data)
     mock_client.async_set_timer.side_effect = CowayError("boom")
 
-    await hass.services.async_call(
-        SELECT_DOMAIN,
-        SERVICE_SELECT_OPTION,
-        {ATTR_ENTITY_ID: TIMER_ENTITY, "option": "60"},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            SERVICE_SELECT_OPTION,
+            {ATTR_ENTITY_ID: TIMER_ENTITY, "option": "60"},
+            blocking=True,
+        )
 
     state = hass.states.get(TIMER_ENTITY)
     assert state.state == "off"  # unchanged
@@ -140,7 +150,7 @@ async def test_select_option_api_error_does_not_change_state(
 
 
 async def test_fan_concurrent_commands_are_serialized(hass: HomeAssistant) -> None:
-    """Second command issued while one is running is dropped (lock held)."""
+    """Second command issued while one is running is rejected with an error."""
     data = make_purifier_data(make_purifier(is_on=True, fan_speed=1))
     _, mock_client = await setup_coway_integration(hass, data)
 
@@ -166,14 +176,15 @@ async def test_fan_concurrent_commands_are_serialized(hass: HomeAssistant) -> No
     # Yield so first command grabs the lock.
     await asyncio.sleep(0)
 
-    # Second command should hit the lock-held branch and return immediately.
-    await hass.services.async_call(
-        FAN_DOMAIN,
-        SERVICE_SET_PERCENTAGE,
-        {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 33},
-        blocking=True,
-    )
-    assert call_count == 1  # second was dropped
+    # Second command should hit the lock-held branch and be rejected.
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            FAN_DOMAIN,
+            SERVICE_SET_PERCENTAGE,
+            {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 33},
+            blocking=True,
+        )
+    assert call_count == 1  # second never reached the API
 
     release.set()
     await first

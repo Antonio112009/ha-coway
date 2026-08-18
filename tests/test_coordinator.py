@@ -5,13 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from pycoway import AuthError, CowayError, PasswordExpired
-
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
-
+from pycoway import AuthError, CowayError, PasswordExpired
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_coway.const import DOMAIN
@@ -201,3 +198,44 @@ async def test_coordinator_skip_password_change_default(
         mock_client_class.assert_called_once()
         call_kwargs = mock_client_class.call_args
         assert call_kwargs.kwargs["skip_password_change"] is True
+
+
+async def test_command_is_serialized_with_polling(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A control command waits for an in-flight poll to finish.
+
+    Polling temporarily disables the client's token check, so commands must
+    not hit the API mid-poll.
+    """
+    import asyncio
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+    coordinator = CowayDataUpdateCoordinator(hass, entry)
+
+    release_poll = asyncio.Event()
+    events: list[str] = []
+
+    async def slow_poll():
+        events.append("poll started")
+        await release_poll.wait()
+        events.append("poll finished")
+
+    async def command():
+        events.append("command ran")
+
+    mock_coordinator_client.async_get_purifiers_data.side_effect = slow_poll
+
+    poll_task = asyncio.ensure_future(coordinator._async_update_data())
+    await asyncio.sleep(0)  # let the poll grab the lock
+    command_task = asyncio.ensure_future(coordinator.async_run_command(command()))
+    await asyncio.sleep(0)
+
+    assert events == ["poll started"]  # command is waiting on the lock
+
+    release_poll.set()
+    await poll_task
+    await command_task
+    assert events == ["poll started", "poll finished", "command ran"]

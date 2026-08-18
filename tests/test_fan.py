@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import pytest
-
 from homeassistant.components.fan import (
     ATTR_PERCENTAGE,
     ATTR_PRESET_MODE,
-    DOMAIN as FAN_DOMAIN,
     SERVICE_SET_PERCENTAGE,
     SERVICE_SET_PRESET_MODE,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
+)
+from homeassistant.components.fan import (
+    DOMAIN as FAN_DOMAIN,
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
@@ -70,7 +71,7 @@ async def test_preset_modes_250s_with_auto_eco(hass: HomeAssistant) -> None:
 
 
 async def test_preset_modes_default_without_eco(hass: HomeAssistant) -> None:
-    """Default model (400S/IconS) shows auto/night without auto_eco when eco_mode=False."""
+    """Default model (400S/IconS) omits auto_eco when eco_mode=False."""
     data = make_purifier_data(
         make_purifier(
             model="Airmega 400S",

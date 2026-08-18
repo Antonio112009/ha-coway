@@ -1,0 +1,2 @@
+pycoway==2.0.6
+pytest-homeassistant-custom-component==0.13.317

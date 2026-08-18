@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable
 from datetime import timedelta
-
-from pycoway import AuthError, CowayClient, CowayError, PasswordExpired, PurifierData
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from pycoway import AuthError, CowayClient, CowayError, PasswordExpired, PurifierData
 
 from .const import (
     CONF_POLLING_INTERVAL,
@@ -49,6 +50,15 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
             session=async_create_clientsession(hass),
             skip_password_change=entry.data.get(CONF_SKIP_PASSWORD_CHANGE, True),
         )
+        # pycoway's async_get_purifiers_data() temporarily disables the
+        # client's token check for the duration of the batch, so control
+        # commands must never overlap a poll on the shared client.
+        self._client_lock = asyncio.Lock()
+
+    async def async_run_command(self, command: Awaitable[None]) -> None:
+        """Run a control command serialized against polling."""
+        async with self._client_lock:
+            await command
 
     async def _async_setup(self) -> None:
         """Authenticate with the Coway API.
@@ -76,7 +86,8 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
     async def _async_update_data(self) -> PurifierData:
         """Fetch the latest purifier data."""
         try:
-            return await self.client.async_get_purifiers_data()
+            async with self._client_lock:
+                return await self.client.async_get_purifiers_data()
         except PasswordExpired as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,

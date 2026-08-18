@@ -12,6 +12,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .entity import CowayEntity
 
+PARALLEL_UPDATES = 0  # Read-only platform; data arrives via the coordinator
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

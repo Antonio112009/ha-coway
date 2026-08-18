@@ -70,9 +70,4 @@ LIGHT_MODE_TO_API: dict[str, LightMode] = {
     "half_off": LightMode.HALF_OFF,
 }
 
-API_TO_LIGHT_MODE: dict[int, str] = {
-    0: "on",
-    1: "aqi_off",
-    2: "off",
-    3: "half_off",
-}
+API_TO_LIGHT_MODE: dict[int, str] = {int(v): k for k, v in LIGHT_MODE_TO_API.items()}

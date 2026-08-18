@@ -4,7 +4,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "ha_coway"
 
-CONF_SKIP_PASSWORD_CHANGE = "skip_password_change"
+CONF_SKIP_PASSWORD_CHANGE = "skip_password_change"  # noqa: S105 — config key, not a secret
 CONF_POLLING_INTERVAL = "polling_interval"
 DEFAULT_POLLING_INTERVAL = 60
 

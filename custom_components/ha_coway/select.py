@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-
-from pycoway import CowayError, CowayPurifier, DeviceAttributes
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from pycoway import CowayPurifier, DeviceAttributes
 
 from .const import DOMAIN
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -27,7 +25,7 @@ from .devices import (
 )
 from .entity import CowayEntity
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
 TIMER_OPTIONS = ["off", "60", "120", "240", "480"]
 SENSITIVITY_OPTIONS = ["sensitive", "moderate", "insensitive"]
@@ -203,22 +201,14 @@ class CowaySelect(CowayEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
-            try:
-                await self.entity_description.select_fn(
+            await self._async_send_command(
+                f"set {self.entity_description.key}",
+                self.entity_description.select_fn(
                     self.coordinator, self.purifier.device_attr, option
-                )
-            except CowayError as err:
-                _LOGGER.error(
-                    "Failed to set %s for %s: %s",
-                    self.entity_description.key,
-                    self.entity_id,
-                    err,
-                )
-                self._schedule_refresh()
-                return
+                ),
+            )
             self._optimistic_value = option
             self.async_write_ha_state()
             self._schedule_refresh()

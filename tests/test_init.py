@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_coway.const import DOMAIN

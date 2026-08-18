@@ -7,8 +7,6 @@ import logging
 import math
 from typing import Any
 
-from pycoway import CowayError
-
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,6 +35,8 @@ from .devices import (
 from .entity import CowayEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
 SPEED_RANGE = (1, 3)
 
@@ -105,9 +105,11 @@ class CowayFan(CowayEntity, FanEntity):
             return 0
         # 250S reports speed 5 (rapid) and 9 (smart eco) which are not
         # user-selectable speeds — show 0% to match the IoCare app.
-        if detect_family(self.purifier.device_attr) == FAMILY_250S:
-            if self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS:
-                return 0
+        if (
+            detect_family(self.purifier.device_attr) == FAMILY_250S
+            and self.purifier.fan_speed in MODEL_250S_HIDDEN_SPEEDS
+        ):
+            return 0
         # Auto eco mode has no meaningful speed level
         if self.preset_mode == PRESET_AUTO_ECO:
             return 0
@@ -125,20 +127,6 @@ class CowayFan(CowayEntity, FanEntity):
             return _detect_250s_preset(purifier)
         return _detect_default_preset(purifier)
 
-    async def _run_command(self, action: str, coro: Any) -> bool:
-        """Await an API coroutine, logging and swallowing CowayError.
-
-        Returns True on success, False on failure. On failure an immediate
-        coordinator refresh is scheduled so optimistic state is reverted.
-        """
-        try:
-            await coro
-        except CowayError as err:
-            _LOGGER.error("Failed to %s for %s: %s", action, self.entity_id, err)
-            self._schedule_refresh()
-            return False
-        return True
-
     async def async_turn_on(
         self,
         percentage: int | None = None,
@@ -146,15 +134,13 @@ class CowayFan(CowayEntity, FanEntity):
         **kwargs: Any,
     ) -> None:
         """Turn on the purifier."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
             client = self.coordinator.client
             attr = self.purifier.device_attr
-            if not await self._run_command(
+            await self._async_send_command(
                 "turn on", client.async_set_power(attr, is_on=True)
-            ):
-                return
+            )
             self.purifier.is_on = True
             self.purifier.light_on = True
             if preset_mode is not None:
@@ -170,15 +156,13 @@ class CowayFan(CowayEntity, FanEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
             client = self.coordinator.client
             attr = self.purifier.device_attr
-            if not await self._run_command(
+            await self._async_send_command(
                 "turn off", client.async_set_power(attr, is_on=False)
-            ):
-                return
+            )
             self.purifier.is_on = False
             self.purifier.light_on = False
             self.async_write_ha_state()
@@ -189,16 +173,14 @@ class CowayFan(CowayEntity, FanEntity):
         if percentage == 0:
             await self.async_turn_off()
             return
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
             if not self.is_on:
                 client = self.coordinator.client
                 attr = self.purifier.device_attr
-                if not await self._run_command(
+                await self._async_send_command(
                     "power on", client.async_set_power(attr, is_on=True)
-                ):
-                    return
+                )
                 self.purifier.is_on = True
                 self.purifier.light_on = True
                 await asyncio.sleep(COMMAND_CHAIN_DELAY)
@@ -207,13 +189,12 @@ class CowayFan(CowayEntity, FanEntity):
     async def _apply_speed(self, percentage: int) -> None:
         """Send the speed command and update optimistic state."""
         speed = math.ceil(percentage_to_ranged_value(SPEED_RANGE, percentage))
-        if not await self._run_command(
+        await self._async_send_command(
             "set speed",
             self.coordinator.client.async_set_fan_speed(
                 self.purifier.device_attr, speed=str(speed)
             ),
-        ):
-            return
+        )
         self.purifier.fan_speed = speed
         self.purifier.auto_mode = False
         self.purifier.night_mode = False
@@ -224,16 +205,14 @@ class CowayFan(CowayEntity, FanEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
             if not self.is_on:
                 client = self.coordinator.client
                 attr = self.purifier.device_attr
-                if not await self._run_command(
+                await self._async_send_command(
                     "power on", client.async_set_power(attr, is_on=True)
-                ):
-                    return
+                )
                 self.purifier.is_on = True
                 self.purifier.light_on = True
                 await asyncio.sleep(COMMAND_CHAIN_DELAY)
@@ -281,8 +260,7 @@ class CowayFan(CowayEntity, FanEntity):
             return
         api_call, (auto, eco, night, rapid), fan_speed = spec
 
-        if not await self._run_command(f"set preset {preset_mode}", api_call(attr)):
-            return
+        await self._async_send_command(f"set preset {preset_mode}", api_call(attr))
         purifier.auto_mode = auto
         purifier.eco_mode = eco
         purifier.night_mode = night

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_coway.sensor import (

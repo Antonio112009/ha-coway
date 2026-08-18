@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
-
-from pycoway import CowayError, CowayPurifier, DeviceAttributes
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from pycoway import CowayPurifier, DeviceAttributes
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import FAMILY_250S, detect_family, uses_light_mode_select
 from .entity import CowayEntity
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -132,34 +130,28 @@ class CowaySwitch(CowayEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
-            try:
-                await self.entity_description.turn_on_fn(
+            await self._async_send_command(
+                "turn on",
+                self.entity_description.turn_on_fn(
                     self.coordinator, self.purifier.device_attr
-                )
-            except CowayError as err:
-                _LOGGER.error("Failed to turn on %s: %s", self.entity_id, err)
-                self._schedule_refresh()
-                return
+                ),
+            )
             self._optimistic_state = True
             self.async_write_ha_state()
             self._schedule_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch."""
-        if self._command_lock.locked():
-            return
+        self._ensure_not_busy()
         async with self._command_lock:
-            try:
-                await self.entity_description.turn_off_fn(
+            await self._async_send_command(
+                "turn off",
+                self.entity_description.turn_off_fn(
                     self.coordinator, self.purifier.device_attr
-                )
-            except CowayError as err:
-                _LOGGER.error("Failed to turn off %s: %s", self.entity_id, err)
-                self._schedule_refresh()
-                return
+                ),
+            )
             self._optimistic_state = False
             self.async_write_ha_state()
             self._schedule_refresh()

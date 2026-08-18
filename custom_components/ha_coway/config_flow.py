@@ -7,8 +7,6 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from pycoway import AuthError, CowayClient, CowayError, PasswordExpired
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -16,6 +14,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from pycoway import AuthError, CowayClient, CowayError, PasswordExpired
 
 from .const import (
     CONF_POLLING_INTERVAL,

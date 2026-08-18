@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from datetime import datetime
 
-from pycoway import CowayPurifier
-
 from homeassistant.core import CALLBACK_TYPE, callback
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from pycoway import CowayError, CowayPurifier
 
 from .const import COMMAND_REFRESH_DELAY, DOMAIN
 from .coordinator import CowayDataUpdateCoordinator
@@ -77,6 +78,31 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         if not super().available:
             return False
         return not self._requires_connection or bool(self.purifier.network_status)
+
+    def _ensure_not_busy(self) -> None:
+        """Reject a command while another is still running for this entity."""
+        if self._command_lock.locked():
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="command_in_progress",
+            )
+
+    async def _async_send_command(self, action: str, command: Awaitable[None]) -> None:
+        """Send a control command, surfacing failures in the UI.
+
+        On failure a coordinator refresh is scheduled so optimistic state
+        gets reverted, then the error is raised for Home Assistant to show.
+        """
+        try:
+            await self.coordinator.async_run_command(command)
+        except CowayError as err:
+            _LOGGER.error("Failed to %s for %s: %s", action, self.entity_id, err)
+            self._schedule_refresh()
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+                translation_placeholders={"action": action, "error": str(err)},
+            ) from err
 
     @callback
     def _schedule_refresh(self) -> None:

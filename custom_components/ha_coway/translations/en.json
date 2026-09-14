@@ -20,6 +20,18 @@
           "password": "Password",
           "skip_password_change": "Skip password change prompt"
         }
+      },
+      "reconfigure": {
+        "title": "Update Coway account",
+        "description": "Update the credentials used for {username}. Enter a different username to move this integration to another Coway account.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "skip_password_change": "Skip password change prompt"
+        },
+        "data_description": {
+          "skip_password_change": "Coway requires a password change every 60 days. Enabling this lets Home Assistant continue logging in without interruption."
+        }
       }
     },
     "error": {
@@ -30,7 +42,8 @@
     },
     "abort": {
       "already_configured": "Account is already configured",
-      "reauth_successful": "Re-authentication was successful"
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful"
     }
   },
   "options": {
@@ -52,9 +65,6 @@
     "command_failed": {
       "message": "Failed to {action}: {error}"
     },
-    "command_in_progress": {
-      "message": "Another command is still running for this device. Try again in a moment."
-    },
     "password_expired": {
       "message": "Coway is requesting a password change because the password has not been changed for 60 days or more. Change your password in the Coway app or enable the 'Skip password change prompt' option."
     }
@@ -62,7 +72,6 @@
   "entity": {
     "fan": {
       "purifier": {
-        "name": "Purifier",
         "state_attributes": {
           "preset_mode": {
             "state": {

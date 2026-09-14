@@ -5,15 +5,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.percentage import (
     percentage_to_ranged_value,
     ranged_value_to_percentage,
 )
+from pycoway import CowayPurifier, DeviceAttributes
 
 from .const import COMMAND_CHAIN_DELAY
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
@@ -32,25 +34,29 @@ from .devices import (
     PRESET_RAPID,
     detect_family,
 )
-from .entity import CowayEntity
+from .entity import CowayEntity, async_track_new_purifiers
 
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
 SPEED_RANGE = (1, 3)
+_SPEED_TO_API: dict[int, Literal["1", "2", "3"]] = {1: "1", 2: "2", 3: "3"}
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: CowayConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Coway fan entities."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        CowayFan(coordinator, device_id) for device_id in coordinator.data.purifiers
-    )
+
+    @callback
+    def _async_add_purifiers(device_ids: list[str]) -> None:
+        async_add_entities(CowayFan(coordinator, device_id) for device_id in device_ids)
+
+    async_track_new_purifiers(entry, _async_add_purifiers)
 
 
 class CowayFan(CowayEntity, FanEntity):
@@ -63,6 +69,9 @@ class CowayFan(CowayEntity, FanEntity):
         | FanEntityFeature.PRESET_MODE
     )
     _attr_speed_count = 3
+    # The fan is the purifier itself, so it carries the device name. The
+    # translation key is still needed for the translated preset mode names.
+    _attr_name = None
     _attr_translation_key = "purifier"
 
     def __init__(
@@ -134,57 +143,51 @@ class CowayFan(CowayEntity, FanEntity):
         **kwargs: Any,
     ) -> None:
         """Turn on the purifier."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            client = self.coordinator.client
-            attr = self.purifier.device_attr
-            await self._async_send_command(
-                "turn on", client.async_set_power(attr, is_on=True)
-            )
-            self.purifier.is_on = True
-            self.purifier.light_on = True
-            if preset_mode is not None:
-                await asyncio.sleep(COMMAND_CHAIN_DELAY)
-                await self._apply_preset_mode(preset_mode)
-                return
-            if percentage is not None:
-                await asyncio.sleep(COMMAND_CHAIN_DELAY)
-                await self._apply_speed(percentage)
-                return
-            self.async_write_ha_state()
-            self._schedule_refresh()
+        client = self.coordinator.client
+        attr = self.purifier.device_attr
+        await self._async_send_command(
+            "turn on", client.async_set_power(attr, is_on=True)
+        )
+        self.purifier.is_on = True
+        self.purifier.light_on = True
+        if preset_mode is not None:
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
+            await self._apply_preset_mode(preset_mode)
+            return
+        if percentage is not None:
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
+            await self._apply_speed(percentage)
+            return
+        self.async_write_ha_state()
+        self._schedule_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the purifier."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            client = self.coordinator.client
-            attr = self.purifier.device_attr
-            await self._async_send_command(
-                "turn off", client.async_set_power(attr, is_on=False)
-            )
-            self.purifier.is_on = False
-            self.purifier.light_on = False
-            self.async_write_ha_state()
-            self._schedule_refresh()
+        client = self.coordinator.client
+        attr = self.purifier.device_attr
+        await self._async_send_command(
+            "turn off", client.async_set_power(attr, is_on=False)
+        )
+        self.purifier.is_on = False
+        self.purifier.light_on = False
+        self.async_write_ha_state()
+        self._schedule_refresh()
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the fan speed percentage."""
         if percentage == 0:
             await self.async_turn_off()
             return
-        self._ensure_not_busy()
-        async with self._command_lock:
-            if not self.is_on:
-                client = self.coordinator.client
-                attr = self.purifier.device_attr
-                await self._async_send_command(
-                    "power on", client.async_set_power(attr, is_on=True)
-                )
-                self.purifier.is_on = True
-                self.purifier.light_on = True
-                await asyncio.sleep(COMMAND_CHAIN_DELAY)
-            await self._apply_speed(percentage)
+        if not self.is_on:
+            client = self.coordinator.client
+            attr = self.purifier.device_attr
+            await self._async_send_command(
+                "power on", client.async_set_power(attr, is_on=True)
+            )
+            self.purifier.is_on = True
+            self.purifier.light_on = True
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
+        await self._apply_speed(percentage)
 
     async def _apply_speed(self, percentage: int) -> None:
         """Send the speed command and update optimistic state."""
@@ -192,7 +195,7 @@ class CowayFan(CowayEntity, FanEntity):
         await self._async_send_command(
             "set speed",
             self.coordinator.client.async_set_fan_speed(
-                self.purifier.device_attr, speed=str(speed)
+                self.purifier.device_attr, speed=_SPEED_TO_API[speed]
             ),
         )
         self.purifier.fan_speed = speed
@@ -205,18 +208,16 @@ class CowayFan(CowayEntity, FanEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            if not self.is_on:
-                client = self.coordinator.client
-                attr = self.purifier.device_attr
-                await self._async_send_command(
-                    "power on", client.async_set_power(attr, is_on=True)
-                )
-                self.purifier.is_on = True
-                self.purifier.light_on = True
-                await asyncio.sleep(COMMAND_CHAIN_DELAY)
-            await self._apply_preset_mode(preset_mode)
+        if not self.is_on:
+            client = self.coordinator.client
+            attr = self.purifier.device_attr
+            await self._async_send_command(
+                "power on", client.async_set_power(attr, is_on=True)
+            )
+            self.purifier.is_on = True
+            self.purifier.light_on = True
+            await asyncio.sleep(COMMAND_CHAIN_DELAY)
+        await self._apply_preset_mode(preset_mode)
 
     async def _apply_preset_mode(self, preset_mode: str) -> None:
         """Send the preset mode command and update optimistic state."""
@@ -225,7 +226,14 @@ class CowayFan(CowayEntity, FanEntity):
         purifier = self.purifier
 
         # mode -> (api method, (auto, eco, night, rapid), fan_speed)
-        mode_map: dict[str, tuple[Any, tuple[bool, bool, bool, bool], int]] = {
+        mode_map: dict[
+            str,
+            tuple[
+                Callable[[DeviceAttributes], Awaitable[None]],
+                tuple[bool, bool, bool, bool],
+                int,
+            ],
+        ] = {
             PRESET_AUTO: (
                 client.async_set_auto_mode,
                 (True, False, False, False),
@@ -271,7 +279,7 @@ class CowayFan(CowayEntity, FanEntity):
         self._schedule_refresh()
 
 
-def _detect_ap_1512hhs_preset(purifier: Any) -> str | None:
+def _detect_ap_1512hhs_preset(purifier: CowayPurifier) -> str | None:
     """Return the active preset for an AP-1512HHS purifier."""
     if purifier.auto_mode:
         return PRESET_AUTO
@@ -280,7 +288,7 @@ def _detect_ap_1512hhs_preset(purifier: Any) -> str | None:
     return None
 
 
-def _detect_250s_preset(purifier: Any) -> str | None:
+def _detect_250s_preset(purifier: CowayPurifier) -> str | None:
     """Return the active preset for an Airmega 250S purifier."""
     if purifier.fan_speed == MODEL_250S_AUTO_ECO_SPEED:
         return PRESET_AUTO_ECO
@@ -293,7 +301,7 @@ def _detect_250s_preset(purifier: Any) -> str | None:
     return None
 
 
-def _detect_default_preset(purifier: Any) -> str | None:
+def _detect_default_preset(purifier: CowayPurifier) -> str | None:
     """Return the active preset for default (400S/IconS/other) purifiers."""
     if purifier.eco_mode:
         return PRESET_AUTO_ECO

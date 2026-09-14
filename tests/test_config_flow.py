@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from pycoway import AuthError, CowayError, PasswordExpired
+from pycoway import AuthError, CowayConnectionError, CowayError, PasswordExpired
 
 from custom_components.ha_coway.const import DOMAIN
 
@@ -82,6 +83,25 @@ async def test_flow_connection_error(
 ) -> None:
     """Test config flow when connection fails."""
     mock_coway_client.login.side_effect = CowayError("Connection timeout")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input=MOCK_USER_INPUT,
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_flow_transport_error_is_cannot_connect(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+) -> None:
+    """A network failure wrapped by pycoway maps to cannot_connect, not unknown."""
+    mock_coway_client.login.side_effect = CowayConnectionError("Connection refused")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -201,6 +221,10 @@ async def test_options_flow(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {"polling_interval": 120}
 
+    # OptionsFlowWithReload reloads the entry, so the new interval is live.
+    await hass.async_block_till_done()
+    assert entry.runtime_data.update_interval == timedelta(seconds=120)
+
 
 async def test_reauth_flow_success(
     hass: HomeAssistant,
@@ -264,3 +288,134 @@ async def test_reauth_flow_invalid_auth(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
     assert entry.data["password"] == "now_good"
+
+
+async def test_reconfigure_flow_updates_credentials(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """Reconfigure with the same account updates the stored credentials."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        title=MOCK_USER_INPUT["username"],
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            **MOCK_USER_INPUT,
+            "password": "new_password",
+            "skip_password_change": False,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data["password"] == "new_password"
+    assert entry.data["skip_password_change"] is False
+    assert entry.unique_id == MOCK_USER_INPUT["username"].lower()
+    assert entry.title == MOCK_USER_INPUT["username"]
+    mock_coway_client.login.assert_awaited_once()
+
+
+async def test_reconfigure_flow_moves_to_another_account(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A different username moves the entry to that account."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        title=MOCK_USER_INPUT["username"],
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "username": "Other@Example.com",
+            "password": "other_password",
+            "skip_password_change": True,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.unique_id == "other@example.com"
+    assert entry.title == "Other@Example.com"
+    assert entry.data["username"] == "Other@Example.com"
+    assert entry.data["password"] == "other_password"
+
+
+async def test_reconfigure_flow_rejects_configured_account(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+) -> None:
+    """Moving to an account that already has an entry aborts."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+    other = MockConfigEntry(
+        domain=DOMAIN,
+        data={**MOCK_USER_INPUT, "username": "other@example.com"},
+        unique_id="other@example.com",
+    )
+    other.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={**MOCK_USER_INPUT, "username": "other@example.com"},
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    mock_coway_client.login.assert_not_awaited()
+
+
+async def test_reconfigure_flow_invalid_auth(
+    hass: HomeAssistant,
+    mock_coway_client: AsyncMock,
+) -> None:
+    """Bad credentials keep the reconfigure form open with an error."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        unique_id=MOCK_USER_INPUT["username"].lower(),
+    )
+    entry.add_to_hass(hass)
+    mock_coway_client.login.side_effect = AuthError("Bad password")
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={**MOCK_USER_INPUT, "password": "wrong"},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": "invalid_auth"}

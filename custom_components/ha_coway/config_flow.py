@@ -11,9 +11,10 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlow,
+    OptionsFlowWithReload,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.typing import UNDEFINED
 from pycoway import AuthError, CowayClient, CowayError, PasswordExpired
 
 from .const import (
@@ -41,8 +42,8 @@ STEP_REAUTH_DATA_SCHEMA = vol.Schema(
 )
 
 
-class CowayOptionsFlowHandler(OptionsFlow):
-    """Handle Coway options."""
+class CowayOptionsFlowHandler(OptionsFlowWithReload):
+    """Handle Coway options; the entry reloads itself when they change."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -142,6 +143,47 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=STEP_REAUTH_DATA_SCHEMA,
             description_placeholders={"username": username},
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Update the credentials, or move the entry to another Coway account."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            await self.async_set_unique_id(username.lower())
+            account_changed = self.unique_id != entry.unique_id
+            if account_changed:
+                self._abort_if_unique_id_configured()
+            errors = await self._async_validate_credentials(
+                username,
+                user_input[CONF_PASSWORD],
+                user_input[CONF_SKIP_PASSWORD_CHANGE],
+            )
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=self.unique_id,
+                    title=username if account_changed else UNDEFINED,
+                    data_updates=user_input,
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA,
+                {
+                    CONF_USERNAME: entry.data[CONF_USERNAME],
+                    CONF_SKIP_PASSWORD_CHANGE: entry.data.get(
+                        CONF_SKIP_PASSWORD_CHANGE, True
+                    ),
+                },
+            ),
+            description_placeholders={"username": entry.data[CONF_USERNAME]},
             errors=errors,
         )
 

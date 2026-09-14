@@ -8,7 +8,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pycoway import AuthError, CowayError, PasswordExpired
+from pycoway import AuthError, CowayConnectionError, CowayError, PasswordExpired
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_coway.const import DOMAIN
@@ -103,6 +103,24 @@ async def test_coordinator_update_failure(
     """Test coordinator raises UpdateFailed on CowayError during data fetch."""
     mock_coordinator_client.async_get_purifiers_data.side_effect = CowayError(
         "API error"
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
+    entry.add_to_hass(hass)
+
+    coordinator = CowayDataUpdateCoordinator(hass, entry)
+
+    with pytest.raises(UpdateFailed, match="Error fetching purifier data"):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_update_transport_error_is_update_failed(
+    hass: HomeAssistant,
+    mock_coordinator_client: AsyncMock,
+) -> None:
+    """A network failure wrapped by pycoway raises UpdateFailed, not reauth."""
+    mock_coordinator_client.async_get_purifiers_data.side_effect = CowayConnectionError(
+        "Connection refused"
     )
 
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)

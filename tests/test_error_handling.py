@@ -24,7 +24,7 @@ from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.const import SERVICE_TURN_ON as SVC_TURN_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from pycoway import CowayError
 
@@ -32,7 +32,7 @@ from custom_components.ha_coway.const import DOMAIN
 
 from .conftest import make_purifier, make_purifier_data, setup_coway_integration
 
-FAN_ENTITY = "fan.living_room_purifier_purifier"
+FAN_ENTITY = "fan.living_room_purifier"
 LIGHT_ENTITY = "switch.living_room_purifier_light"
 TIMER_ENTITY = "select.living_room_purifier_off_timer"
 
@@ -146,48 +146,55 @@ async def test_select_option_api_error_does_not_change_state(
     assert "Failed to set timer" in caplog.text
 
 
-# ── Concurrency: lock prevents overlapping commands ───────────────────
+# ── Concurrency: commands on one platform run one at a time ──────────
 
 
 async def test_fan_concurrent_commands_are_serialized(hass: HomeAssistant) -> None:
-    """Second command issued while one is running is rejected with an error."""
+    """A second command waits for the running one instead of overlapping it.
+
+    Serialization comes from ``PARALLEL_UPDATES = 1`` on the platform: Home
+    Assistant queues service calls behind its per-platform semaphore.
+    """
     data = make_purifier_data(make_purifier(is_on=True, fan_speed=1))
     _, mock_client = await setup_coway_integration(hass, data)
 
-    # Block the API call until we release it.
+    # Block the first API call until we release it.
+    entered = asyncio.Event()
     release = asyncio.Event()
-    call_count = 0
+    speeds: list[str] = []
 
-    async def slow_set_fan_speed(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
+    async def slow_set_fan_speed(attr, *, speed: str) -> None:
+        speeds.append(speed)
+        entered.set()
         await release.wait()
 
     mock_client.async_set_fan_speed.side_effect = slow_set_fan_speed
 
-    first = hass.async_create_task(
-        hass.services.async_call(
-            FAN_DOMAIN,
-            SERVICE_SET_PERCENTAGE,
-            {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 100},
-            blocking=True,
+    def set_percentage(percentage: int) -> asyncio.Task[None]:
+        return hass.async_create_task(
+            hass.services.async_call(
+                FAN_DOMAIN,
+                SERVICE_SET_PERCENTAGE,
+                {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: percentage},
+                blocking=True,
+            )
         )
-    )
-    # Yield so first command grabs the lock.
-    await asyncio.sleep(0)
 
-    # Second command should hit the lock-held branch and be rejected.
-    with pytest.raises(ServiceValidationError):
-        await hass.services.async_call(
-            FAN_DOMAIN,
-            SERVICE_SET_PERCENTAGE,
-            {ATTR_ENTITY_ID: FAN_ENTITY, ATTR_PERCENTAGE: 33},
-            blocking=True,
-        )
-    assert call_count == 1  # second never reached the API
+    first = set_percentage(100)
+    await asyncio.wait_for(entered.wait(), timeout=5)
+
+    second = set_percentage(33)
+    # Give the second call every chance to run: it must stay queued behind
+    # the first one rather than reach the API.
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert speeds == ["3"]
+    assert not second.done()
 
     release.set()
     await first
+    await second
+    assert speeds == ["3", "1"]  # ran after the first, in order
 
 
 # ── Availability: missing device in coordinator data ──────────────────

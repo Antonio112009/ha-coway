@@ -21,6 +21,7 @@ This integration adds your Coway purifiers as Home Assistant devices, with suppo
 
 ## Requirements
 
+- Home Assistant 2026.8 or newer
 - A Coway account that can sign in to the IoCare+ app
 - At least one purifier already registered in IoCare+
 - Home Assistant with access to HACS for the recommended install method
@@ -67,13 +68,15 @@ During setup, you will be asked for:
 
 After setup, you can adjust the polling interval from **Settings** > **Devices & Services** > **Coway** > **Configure**. The default is `60` seconds, and the allowed range is `30` to `600` seconds.
 
+To change the password, the username, or the password-change setting later, use **Reconfigure** from the integration menu. Purifiers added to your Coway account later appear on the next poll without a reload, and a purifier that is no longer in your account can be deleted from its device page.
+
 ## Entities
 
 Each purifier is exposed as a device in Home Assistant. The exact entity set depends on the model and on which values the Coway API reports for that device.
 
 | Category | Entities |
 |----------|----------|
-| `Fan` | `Purifier` with power, speed control, and preset modes |
+| `Fan` | The purifier itself, named after the device, with power, speed control, and preset modes |
 | `Select` | `Off timer`, `Smart mode sensitivity`, `Pre-filter wash frequency`, `Light mode` |
 | `Switch` | `Light`, `Button lock` |
 | `Sensor` | `Indoor air quality`, `Air quality index`, `PM2.5`, `PM10`, `CO2`, `VOC`, `Illuminance`, filter-life sensors, `Timer remaining` |
@@ -101,7 +104,7 @@ Each purifier is exposed as a device in Home Assistant. The exact entity set dep
 ### Some entities are missing
 
 - This is usually model-specific behavior rather than an error.
-- Reload the integration after pairing if your purifier was newly added to your Coway account.
+- A purifier newly added to your Coway account appears on the next poll. If it does not, reload the integration.
 - Check whether the missing control is one of the model-specific differences listed above.
 
 ### Updates feel slow

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Literal
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from pycoway import CowayPurifier, DeviceAttributes
 
 from .const import DOMAIN
@@ -23,14 +25,29 @@ from .devices import (
     detect_family,
     uses_light_mode_select,
 )
-from .entity import CowayEntity
+from .entity import (
+    CowayEntity,
+    async_remove_stale_entities,
+    async_track_new_purifiers,
+)
 
 PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
 TIMER_OPTIONS = ["off", "60", "120", "240", "480"]
 SENSITIVITY_OPTIONS = ["sensitive", "moderate", "insensitive"]
 PRE_FILTER_FREQUENCY_OPTIONS = ["2", "3", "4"]
-_SENSITIVITY_TO_API = {"sensitive": "1", "moderate": "2", "insensitive": "3"}
+_TIMER_TO_API: dict[str, Literal["0", "60", "120", "240", "480"]] = {
+    "off": "0",
+    "60": "60",
+    "120": "120",
+    "240": "240",
+    "480": "480",
+}
+_SENSITIVITY_TO_API: dict[str, Literal["1", "2", "3"]] = {
+    "sensitive": "1",
+    "moderate": "2",
+    "insensitive": "3",
+}
 _API_TO_SENSITIVITY = {1: "sensitive", 2: "moderate", 3: "insensitive"}
 
 
@@ -51,14 +68,13 @@ TIMER_DESCRIPTION = CowaySelectEntityDescription(
     current_fn=lambda p: (
         ("off" if p.timer == 0 else str(p.timer)) if p.timer is not None else None
     ),
-    select_fn=lambda c, a, v: c.client.async_set_timer(
-        a, time="0" if v == "off" else v
-    ),
+    select_fn=lambda c, a, v: c.client.async_set_timer(a, time=_TIMER_TO_API[v]),
 )
 
 SENSITIVITY_DESCRIPTION = CowaySelectEntityDescription(
     key="sensitivity",
     translation_key="sensitivity",
+    entity_category=EntityCategory.CONFIG,
     options=SENSITIVITY_OPTIONS,
     current_fn=lambda p: (
         _API_TO_SENSITIVITY.get(p.smart_mode_sensitivity)
@@ -73,6 +89,7 @@ SENSITIVITY_DESCRIPTION = CowaySelectEntityDescription(
 PRE_FILTER_FREQUENCY_DESCRIPTION = CowaySelectEntityDescription(
     key="pre_filter_frequency",
     translation_key="pre_filter_frequency",
+    entity_category=EntityCategory.CONFIG,
     options=PRE_FILTER_FREQUENCY_OPTIONS,
     current_fn=lambda p: (
         str(p.pre_filter_change_frequency)
@@ -130,43 +147,42 @@ def _get_select_descriptions(
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: CowayConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Coway select entities."""
     coordinator = entry.runtime_data
     ent_reg = er.async_get(hass)
-    entities: list[CowaySelect] = []
-    valid_unique_ids: set[str] = set()
-    current_device_ids = set(coordinator.data.purifiers)
-    for device_id, purifier in coordinator.data.purifiers.items():
-        for description in _get_select_descriptions(purifier):
-            unique_id = f"{device_id}_{description.key}"
-            valid_unique_ids.add(unique_id)
-            # A None current value normally means the model lacks the feature,
-            # but it can also be a transient gap (device off or unreachable).
-            # Keep entities that already exist in the registry.
-            if description.current_fn(
-                purifier
-            ) is None and not ent_reg.async_get_entity_id("select", DOMAIN, unique_id):
-                continue
-            entities.append(CowaySelect(coordinator, device_id, description))
 
-    # Remove select entities of the *current* devices whose descriptions no
-    # longer apply. Entities belonging to devices that are missing from this
-    # update are left intact in case the device is temporarily unreachable.
-    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if ent_entry.domain != "select":
-            continue
-        if ent_entry.unique_id in valid_unique_ids:
-            continue
-        if not any(
-            ent_entry.unique_id.startswith(f"{device_id}_")
-            for device_id in current_device_ids
-        ):
-            continue
-        ent_reg.async_remove(ent_entry.entity_id)
+    @callback
+    def _async_add_purifiers(device_ids: list[str]) -> None:
+        entities: list[CowaySelect] = []
+        for device_id in device_ids:
+            purifier = coordinator.data.purifiers[device_id]
+            for description in _get_select_descriptions(purifier):
+                unique_id = f"{device_id}_{description.key}"
+                # A None current value normally means the model lacks the
+                # feature, but it can also be a transient gap (device off or
+                # unreachable). Keep entities that already exist in the registry.
+                if description.current_fn(
+                    purifier
+                ) is None and not ent_reg.async_get_entity_id(
+                    "select", DOMAIN, unique_id
+                ):
+                    continue
+                entities.append(CowaySelect(coordinator, device_id, description))
+        async_add_entities(entities)
 
-    async_add_entities(entities)
+    async_remove_stale_entities(
+        hass,
+        entry,
+        "select",
+        {
+            f"{device_id}_{description.key}"
+            for device_id, purifier in coordinator.data.purifiers.items()
+            for description in _get_select_descriptions(purifier)
+        },
+    )
+    async_track_new_purifiers(entry, _async_add_purifiers)
 
 
 class CowaySelect(CowayEntity, SelectEntity):
@@ -201,14 +217,12 @@ class CowaySelect(CowayEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            await self._async_send_command(
-                f"set {self.entity_description.key}",
-                self.entity_description.select_fn(
-                    self.coordinator, self.purifier.device_attr, option
-                ),
-            )
-            self._optimistic_value = option
-            self.async_write_ha_state()
-            self._schedule_refresh()
+        await self._async_send_command(
+            f"set {self.entity_description.key}",
+            self.entity_description.select_fn(
+                self.coordinator, self.purifier.device_attr, option
+            ),
+        )
+        self._optimistic_value = option
+        self.async_write_ha_state()
+        self._schedule_refresh()

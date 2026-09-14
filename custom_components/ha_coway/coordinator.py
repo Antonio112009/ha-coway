@@ -50,9 +50,9 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
             session=async_create_clientsession(hass),
             skip_password_change=entry.data.get(CONF_SKIP_PASSWORD_CHANGE, True),
         )
-        # pycoway's async_get_purifiers_data() temporarily disables the
-        # client's token check for the duration of the batch, so control
-        # commands must never overlap a poll on the shared client.
+        # Control commands are serialized against polling so a poll that is
+        # already in flight cannot complete after a command and overwrite the
+        # optimistic entity state with pre-command data.
         self._client_lock = asyncio.Lock()
 
     async def async_run_command(self, command: Awaitable[None]) -> None:

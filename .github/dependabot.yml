@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Keep the workflow actions on their newest releases. PRs target
+  # development because only that branch may open PRs against main.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: development
+
+  # Track the Home Assistant test harness (and with it Home Assistant
+  # itself) so CI shows breaking changes early. pycoway bumps stay manual:
+  # they also need manifest.json and the hacs.json Home Assistant floor
+  # reviewed.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: development
+    ignore:
+      - dependency-name: pycoway

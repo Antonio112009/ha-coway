@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "sensor": {
+      "voc": {
+        "default": "mdi:molecule"
+      }
+    }
+  }
+}

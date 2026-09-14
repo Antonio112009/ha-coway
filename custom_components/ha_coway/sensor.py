@@ -16,17 +16,22 @@ from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     LIGHT_LUX,
     PERCENTAGE,
+    EntityCategory,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from pycoway import CowayPurifier
 
 from .const import DOMAIN
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import AP_1512HHS_UK_EU_CODES, FAMILY_250S, detect_family
-from .entity import CowayEntity
+from .entity import (
+    CowayEntity,
+    async_remove_stale_entities,
+    async_track_new_purifiers,
+)
 
 PARALLEL_UPDATES = 0  # Read-only platform; data arrives via the coordinator
 
@@ -69,6 +74,7 @@ PRE_FILTER_DESCRIPTION = CowaySensorEntityDescription(
     key="pre_filter",
     translation_key="pre_filter",
     native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.DIAGNOSTIC,
     state_class=SensorStateClass.MEASUREMENT,
     value_fn=lambda p: p.pre_filter_pct,
 )
@@ -77,6 +83,7 @@ MAX2_FILTER_DESCRIPTION = CowaySensorEntityDescription(
     key="max2_filter",
     translation_key="max2_filter",
     native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.DIAGNOSTIC,
     state_class=SensorStateClass.MEASUREMENT,
     value_fn=lambda p: p.max2_pct,
 )
@@ -96,6 +103,7 @@ CHARCOAL_FILTER_DESCRIPTION = CowaySensorEntityDescription(
     key="pre_filter",
     translation_key="charcoal_filter",
     native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.DIAGNOSTIC,
     state_class=SensorStateClass.MEASUREMENT,
     value_fn=lambda p: p.odor_filter_pct,
 )
@@ -104,6 +112,7 @@ HEPA_FILTER_DESCRIPTION = CowaySensorEntityDescription(
     key="max2_filter",
     translation_key="hepa_filter",
     native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.DIAGNOSTIC,
     state_class=SensorStateClass.MEASUREMENT,
     value_fn=lambda p: p.max2_pct,
 )
@@ -132,11 +141,11 @@ COMMON_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda p: p.carbon_dioxide,
     ),
+    # Coway reports VOC as a unitless level index (``VOCs_IDX``), not a
+    # concentration, so no VOC device class: those require µg/m³ or ppb.
     CowaySensorEntityDescription(
         key="voc",
         translation_key="voc",
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda p: p.volatile_organic_compounds,
     ),
@@ -151,6 +160,7 @@ COMMON_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         key="odor_filter",
         translation_key="odor_filter",
         native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda p: p.odor_filter_pct,
     ),
@@ -167,7 +177,9 @@ COMMON_DESCRIPTIONS: tuple[CowaySensorEntityDescription, ...] = (
         translation_key="indoor_aq",
         device_class=SensorDeviceClass.ENUM,
         options=["good", "moderate", "unhealthy", "very_unhealthy"],
-        value_fn=lambda p: AQ_GRADE_MAP.get(p.aq_grade),
+        value_fn=lambda p: (
+            AQ_GRADE_MAP.get(p.aq_grade) if p.aq_grade is not None else None
+        ),
     ),
 )
 
@@ -212,45 +224,43 @@ def _get_sensor_descriptions(
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: CowayConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Coway sensor entities."""
     coordinator = entry.runtime_data
     ent_reg = er.async_get(hass)
-    entities: list[CowaySensor] = []
-    valid_unique_ids: set[str] = set()
-    current_device_ids = set(coordinator.data.purifiers)
-    for device_id, purifier in coordinator.data.purifiers.items():
-        for description in _get_sensor_descriptions(purifier):
-            unique_id = f"{device_id}_{description.key}"
-            valid_unique_ids.add(unique_id)
-            # A None value normally means the model lacks this sensor — but it
-            # can also be a transient gap (device off or unreachable). Keep
-            # entities that already exist in the registry so history and
-            # customizations survive a badly-timed reload.
-            if description.value_fn(
-                purifier
-            ) is None and not ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id):
-                continue
-            entities.append(CowaySensor(coordinator, device_id, description))
 
-    # Remove sensor entities of the *current* devices whose descriptions no
-    # longer apply (e.g. renamed keys after an update). We deliberately leave
-    # entities belonging to devices that are missing from this update
-    # untouched, in case the device is just temporarily unreachable.
-    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if ent_entry.domain != "sensor":
-            continue
-        if ent_entry.unique_id in valid_unique_ids:
-            continue
-        if not any(
-            ent_entry.unique_id.startswith(f"{device_id}_")
-            for device_id in current_device_ids
-        ):
-            continue
-        ent_reg.async_remove(ent_entry.entity_id)
+    @callback
+    def _async_add_purifiers(device_ids: list[str]) -> None:
+        entities: list[CowaySensor] = []
+        for device_id in device_ids:
+            purifier = coordinator.data.purifiers[device_id]
+            for description in _get_sensor_descriptions(purifier):
+                unique_id = f"{device_id}_{description.key}"
+                # A None value normally means the model lacks this sensor, but
+                # it can also be a transient gap (device off or unreachable).
+                # Keep entities that already exist in the registry so history
+                # and customizations survive a badly-timed reload.
+                if description.value_fn(
+                    purifier
+                ) is None and not ent_reg.async_get_entity_id(
+                    "sensor", DOMAIN, unique_id
+                ):
+                    continue
+                entities.append(CowaySensor(coordinator, device_id, description))
+        async_add_entities(entities)
 
-    async_add_entities(entities)
+    async_remove_stale_entities(
+        hass,
+        entry,
+        "sensor",
+        {
+            f"{device_id}_{description.key}"
+            for device_id, purifier in coordinator.data.purifiers.items()
+            for description in _get_sensor_descriptions(purifier)
+        },
+    )
+    async_track_new_purifiers(entry, _async_add_purifiers)
 
 
 class CowaySensor(CowayEntity, SensorEntity):

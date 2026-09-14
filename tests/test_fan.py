@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant
 
 from .conftest import make_purifier, make_purifier_data, setup_coway_integration
 
-ENTITY_ID = "fan.living_room_purifier_purifier"
+ENTITY_ID = "fan.living_room_purifier"
 
 
 # ── Preset modes per model ────────────────────────────────────────────
@@ -494,3 +494,12 @@ async def test_fan_unavailable_when_network_down(hass: HomeAssistant) -> None:
 
     state = hass.states.get(ENTITY_ID)
     assert state.state == "unavailable"
+
+
+async def test_fan_is_named_after_device(hass: HomeAssistant) -> None:
+    """The fan is the purifier itself, so it carries the device name only."""
+    await setup_coway_integration(hass, make_purifier_data(make_purifier()))
+
+    state = hass.states.get(ENTITY_ID)
+    assert state is not None
+    assert state.attributes["friendly_name"] == "Living Room Purifier"

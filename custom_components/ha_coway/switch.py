@@ -7,14 +7,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from pycoway import CowayPurifier, DeviceAttributes
 
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 from .devices import FAMILY_250S, detect_family, uses_light_mode_select
-from .entity import CowayEntity
+from .entity import (
+    CowayEntity,
+    async_remove_stale_entities,
+    async_track_new_purifiers,
+)
 
 PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
@@ -46,6 +50,7 @@ SWITCH_DESCRIPTIONS: tuple[CowaySwitchEntityDescription, ...] = (
     CowaySwitchEntityDescription(
         key="button_lock",
         translation_key="button_lock",
+        entity_category=EntityCategory.CONFIG,
         is_on_fn=lambda p: p.button_lock == 1 if p.button_lock is not None else None,
         turn_on_fn=lambda c, a: c.client.async_set_button_lock(a, value="1"),
         turn_off_fn=lambda c, a: c.client.async_set_button_lock(a, value="0"),
@@ -64,38 +69,32 @@ def _is_switch_supported(
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: CowayConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Coway switch entities."""
     coordinator = entry.runtime_data
-    entities: list[CowaySwitch] = []
-    valid_unique_ids: set[str] = set()
-    current_device_ids = set(coordinator.data.purifiers)
-    for device_id, purifier in coordinator.data.purifiers.items():
-        for description in SWITCH_DESCRIPTIONS:
-            if not _is_switch_supported(description, purifier):
-                continue
-            unique_id = f"{device_id}_{description.key}"
-            valid_unique_ids.add(unique_id)
-            entities.append(CowaySwitch(coordinator, device_id, description))
 
-    # Remove stale switch entities for the *current* devices only. Entities
-    # belonging to devices that are missing from this update are left intact in
-    # case the device is temporarily unreachable.
-    ent_reg = er.async_get(hass)
-    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if ent_entry.domain != "switch":
-            continue
-        if ent_entry.unique_id in valid_unique_ids:
-            continue
-        if not any(
-            ent_entry.unique_id.startswith(f"{device_id}_")
-            for device_id in current_device_ids
-        ):
-            continue
-        ent_reg.async_remove(ent_entry.entity_id)
+    @callback
+    def _async_add_purifiers(device_ids: list[str]) -> None:
+        async_add_entities(
+            CowaySwitch(coordinator, device_id, description)
+            for device_id in device_ids
+            for description in SWITCH_DESCRIPTIONS
+            if _is_switch_supported(description, coordinator.data.purifiers[device_id])
+        )
 
-    async_add_entities(entities)
+    async_remove_stale_entities(
+        hass,
+        entry,
+        "switch",
+        {
+            f"{device_id}_{description.key}"
+            for device_id, purifier in coordinator.data.purifiers.items()
+            for description in SWITCH_DESCRIPTIONS
+            if _is_switch_supported(description, purifier)
+        },
+    )
+    async_track_new_purifiers(entry, _async_add_purifiers)
 
 
 class CowaySwitch(CowayEntity, SwitchEntity):
@@ -130,28 +129,24 @@ class CowaySwitch(CowayEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            await self._async_send_command(
-                "turn on",
-                self.entity_description.turn_on_fn(
-                    self.coordinator, self.purifier.device_attr
-                ),
-            )
-            self._optimistic_state = True
-            self.async_write_ha_state()
-            self._schedule_refresh()
+        await self._async_send_command(
+            "turn on",
+            self.entity_description.turn_on_fn(
+                self.coordinator, self.purifier.device_attr
+            ),
+        )
+        self._optimistic_state = True
+        self.async_write_ha_state()
+        self._schedule_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch."""
-        self._ensure_not_busy()
-        async with self._command_lock:
-            await self._async_send_command(
-                "turn off",
-                self.entity_description.turn_off_fn(
-                    self.coordinator, self.purifier.device_attr
-                ),
-            )
-            self._optimistic_state = False
-            self.async_write_ha_state()
-            self._schedule_refresh()
+        await self._async_send_command(
+            "turn off",
+            self.entity_description.turn_off_fn(
+                self.coordinator, self.purifier.device_attr
+            ),
+        )
+        self._optimistic_state = False
+        self.async_write_ha_state()
+        self._schedule_refresh()

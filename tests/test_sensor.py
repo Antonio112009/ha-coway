@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.icon import async_get_icons
 
+from custom_components.ha_coway.const import DOMAIN
 from custom_components.ha_coway.sensor import (
     AQ_GRADE_MAP,
     _get_sensor_descriptions,
@@ -216,8 +218,6 @@ async def test_registered_sensor_survives_transient_none(
     from homeassistant.helpers import entity_registry as er
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    from custom_components.ha_coway.const import DOMAIN
-
     from .conftest import MOCK_ENTRY_DATA
 
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA)
@@ -259,3 +259,21 @@ async def test_indoor_aq_enum_value(hass: HomeAssistant) -> None:
     state = hass.states.get(f"{SENSOR_PREFIX}_indoor_air_quality")
     assert state is not None
     assert state.state == "unhealthy"
+
+
+async def test_voc_is_unitless_level(hass: HomeAssistant) -> None:
+    """VOC is a Coway level index: no unit or device class, molecule icon.
+
+    Translated icons are resolved by the frontend, so the icon is checked
+    through the loaded icon translations rather than the state attributes.
+    """
+    await setup_coway_integration(hass, make_purifier_data(make_purifier()))
+
+    state = hass.states.get("sensor.living_room_purifier_voc")
+    assert state is not None
+    assert state.state == "100"
+    assert "unit_of_measurement" not in state.attributes
+    assert "device_class" not in state.attributes
+
+    icons = await async_get_icons(hass, "entity", {DOMAIN})
+    assert icons[DOMAIN]["sensor"]["voc"]["default"] == "mdi:molecule"

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from homeassistant.core import CALLBACK_TYPE, callback
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pycoway import CowayError, CowayPurifier
 
 from .const import COMMAND_REFRESH_DELAY, DOMAIN
-from .coordinator import CowayDataUpdateCoordinator
+from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +38,6 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         super().__init__(coordinator)
         self._device_id = device_id
         self._cancel_refresh: CALLBACK_TYPE | None = None
-        self._command_lock = asyncio.Lock()
         purifier = coordinator.data.purifiers[device_id]
         self._last_purifier: CowayPurifier = purifier
         self._attr_device_info = DeviceInfo(
@@ -79,14 +78,6 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
             return False
         return not self._requires_connection or bool(self.purifier.network_status)
 
-    def _ensure_not_busy(self) -> None:
-        """Reject a command while another is still running for this entity."""
-        if self._command_lock.locked():
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="command_in_progress",
-            )
-
     async def _async_send_command(self, action: str, command: Awaitable[None]) -> None:
         """Send a control command, surfacing failures in the UI.
 
@@ -123,3 +114,60 @@ class CowayEntity(CoordinatorEntity[CowayDataUpdateCoordinator]):
         if self._cancel_refresh is not None:
             self._cancel_refresh()
             self._cancel_refresh = None
+
+
+@callback
+def async_track_new_purifiers(
+    entry: CowayConfigEntry,
+    async_add_purifiers: Callable[[list[str]], None],
+) -> None:
+    """Create entities for every purifier, now and whenever a new one appears.
+
+    ``async_add_purifiers`` receives the ids of purifiers not seen before:
+    all of them right away, then the new ones after each coordinator update.
+    A purifier paired in the Coway app after setup thus shows up on the next
+    poll without a reload.
+    """
+    coordinator = entry.runtime_data
+    known: set[str] = set()
+
+    @callback
+    def _async_check_new_purifiers() -> None:
+        new_ids = [
+            device_id
+            for device_id in coordinator.data.purifiers
+            if device_id not in known
+        ]
+        if not new_ids:
+            return
+        known.update(new_ids)
+        async_add_purifiers(new_ids)
+
+    _async_check_new_purifiers()
+    entry.async_on_unload(coordinator.async_add_listener(_async_check_new_purifiers))
+
+
+@callback
+def async_remove_stale_entities(
+    hass: HomeAssistant,
+    entry: CowayConfigEntry,
+    domain: str,
+    valid_unique_ids: set[str],
+) -> None:
+    """Remove registry entries of *current* purifiers that no longer apply.
+
+    Descriptions can change between releases (renamed keys, model-specific
+    entities). Entities of purifiers missing from this update are left
+    untouched in case the device is only temporarily unreachable.
+    """
+    ent_reg = er.async_get(hass)
+    current_device_ids = set(entry.runtime_data.data.purifiers)
+    for ent_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent_entry.domain != domain or ent_entry.unique_id in valid_unique_ids:
+            continue
+        if not any(
+            ent_entry.unique_id.startswith(f"{device_id}_")
+            for device_id in current_device_ids
+        ):
+            continue
+        ent_reg.async_remove(ent_entry.entity_id)

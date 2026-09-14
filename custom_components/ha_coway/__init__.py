@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import PLATFORMS
+from .const import DOMAIN, PLATFORMS
 from .coordinator import CowayConfigEntry, CowayDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,7 +23,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> boo
     entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_options_updated))
     return True
 
 
@@ -30,9 +31,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> bo
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_options_updated(hass: HomeAssistant, entry: CowayConfigEntry) -> None:
-    """Handle options update — reload the integration."""
-    await hass.config_entries.async_reload(entry.entry_id)
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: CowayConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow deleting a purifier the Coway account no longer reports.
+
+    Purifiers missing from an update are kept on purpose, since they may
+    only be unreachable, so this is how a sold or unpaired one is removed.
+    Without a loaded entry there is no device list to check against, so
+    removal is refused rather than guessed.
+    """
+    if entry.state is not ConfigEntryState.LOADED:
+        return False
+    purifiers = entry.runtime_data.data.purifiers
+    return not any(
+        domain == DOMAIN and device_id in purifiers
+        for domain, device_id in device_entry.identifiers
+    )
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> bool:

@@ -1,2 +1,2 @@
 pycoway==3.0.0
-pytest-homeassistant-custom-component==0.13.365
+pytest-homeassistant-custom-component==0.13.368

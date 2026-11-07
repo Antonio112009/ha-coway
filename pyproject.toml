@@ -30,3 +30,11 @@ python_version = "3.14"
 files = ["custom_components/ha_coway"]
 strict = true
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# Home Assistant 2026.10 moved these platform classes into the platforms'
+# const modules and re-exports them from the package only implicitly. The
+# const modules don't define them before 2026.10, so the package import is
+# the one that works on every supported release.
+module = ["homeassistant.components.fan", "homeassistant.components.binary_sensor"]
+implicit_reexport = true

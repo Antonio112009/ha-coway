@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -25,6 +26,31 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 type CowayConfigEntry = ConfigEntry[CowayDataUpdateCoordinator]
+
+
+@contextmanager
+def _translate_coway_errors(context: str) -> Iterator[None]:
+    """Map pycoway errors to the exceptions the coordinator must raise.
+
+    Only genuine credential problems raise ConfigEntryAuthFailed; transient
+    failures (connection issues, rate limiting, server maintenance) raise
+    UpdateFailed so the request is retried instead of prompting the user to
+    re-authenticate.
+    """
+    try:
+        yield
+    except PasswordExpired as err:
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN,
+            translation_key="password_expired",
+        ) from err
+    except AuthError as err:
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN,
+            translation_key="auth_failed",
+        ) from err
+    except CowayError as err:
+        raise UpdateFailed(f"{context}: {err}") from err
 
 
 class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
@@ -61,42 +87,12 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
             await command
 
     async def _async_setup(self) -> None:
-        """Authenticate with the Coway API.
-
-        Only genuine credential problems raise ConfigEntryAuthFailed;
-        transient failures (connection issues, rate limiting, server
-        maintenance) raise UpdateFailed so setup is retried instead of
-        prompting the user to re-authenticate.
-        """
-        try:
+        """Authenticate with the Coway API."""
+        with _translate_coway_errors("Error connecting to the Coway API"):
             await self.client.login()
-        except PasswordExpired as err:
-            raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN,
-                translation_key="password_expired",
-            ) from err
-        except AuthError as err:
-            raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN,
-                translation_key="auth_failed",
-            ) from err
-        except CowayError as err:
-            raise UpdateFailed(f"Error connecting to the Coway API: {err}") from err
 
     async def _async_update_data(self) -> PurifierData:
         """Fetch the latest purifier data."""
-        try:
+        with _translate_coway_errors("Error fetching purifier data"):
             async with self._client_lock:
                 return await self.client.async_get_purifiers_data()
-        except PasswordExpired as err:
-            raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN,
-                translation_key="password_expired",
-            ) from err
-        except AuthError as err:
-            raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN,
-                translation_key="auth_failed",
-            ) from err
-        except CowayError as err:
-            raise UpdateFailed(f"Error fetching purifier data: {err}") from err

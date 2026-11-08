@@ -18,6 +18,11 @@ TO_REDACT = {
     "unique_id",
     "device_id",
     "place_id",
+    # Coway order/contract number and the location codes Coway uses for
+    # outdoor air quality (administrative district, monitoring station).
+    "order_no",
+    "admdong_cd",
+    "station_cd",
 }
 
 

@@ -219,6 +219,7 @@ class CowayConfigFlow(ConfigFlow, domain=DOMAIN):
                 username,
                 password,
                 skip_password_change=skip_password_change,
+                timezone=self.hass.config.time_zone,
             ) as client:
                 await client.login()
         except AuthError:

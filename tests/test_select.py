@@ -231,3 +231,20 @@ async def test_select_optimistic_value(hass: HomeAssistant) -> None:
 
     state = hass.states.get(TIMER_ENTITY)
     assert state.state == "240"
+
+
+async def test_pre_filter_frequency_sends_int(hass: HomeAssistant) -> None:
+    """The wash frequency option reaches pycoway as an int week count."""
+    entry, mock_client = await setup_coway_integration(
+        hass, make_purifier_data(make_purifier(pre_filter_change_frequency=2))
+    )
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: PRE_FILTER_FREQ_ENTITY, "option": "4"},
+        blocking=True,
+    )
+
+    mock_client.async_change_prefilter_setting.assert_awaited_once()
+    assert mock_client.async_change_prefilter_setting.call_args.args[1] == 4

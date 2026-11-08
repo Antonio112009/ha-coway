@@ -49,6 +49,7 @@ _SENSITIVITY_TO_API: dict[str, Literal["1", "2", "3"]] = {
     "insensitive": "3",
 }
 _API_TO_SENSITIVITY = {1: "sensitive", 2: "moderate", 3: "insensitive"}
+_PRE_FILTER_FREQUENCY_TO_API: dict[str, Literal[2, 3, 4]] = {"2": 2, "3": 3, "4": 4}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -96,7 +97,9 @@ PRE_FILTER_FREQUENCY_DESCRIPTION = CowaySelectEntityDescription(
         if p.pre_filter_change_frequency is not None
         else None
     ),
-    select_fn=lambda c, a, v: c.client.async_change_prefilter_setting(a, int(v)),
+    select_fn=lambda c, a, v: c.client.async_change_prefilter_setting(
+        a, _PRE_FILTER_FREQUENCY_TO_API[v]
+    ),
 )
 
 # Common selects for all models

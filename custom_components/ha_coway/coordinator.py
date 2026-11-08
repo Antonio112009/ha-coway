@@ -75,6 +75,9 @@ class CowayDataUpdateCoordinator(DataUpdateCoordinator[PurifierData]):
             entry.data[CONF_PASSWORD],
             session=async_create_clientsession(hass),
             skip_password_change=entry.data.get(CONF_SKIP_PASSWORD_CHANGE, True),
+            # Passing it spares pycoway detecting the system timezone, which
+            # reads files inside the event loop.
+            timezone=hass.config.time_zone,
         )
         # Control commands are serialized against polling so a poll that is
         # already in flight cannot complete after a command and overwrite the

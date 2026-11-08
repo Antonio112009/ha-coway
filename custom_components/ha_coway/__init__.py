@@ -23,7 +23,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> boo
     entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(
+        coordinator.async_add_listener(
+            lambda: _async_update_firmware_versions(hass, entry)
+        )
+    )
     return True
+
+
+@callback
+def _async_update_firmware_versions(
+    hass: HomeAssistant, entry: CowayConfigEntry
+) -> None:
+    """Keep each purifier's firmware version in the device registry current.
+
+    Entities set it only when they are created, so a firmware update, or a
+    first poll whose best-effort HTML scrape failed, would otherwise leave
+    it stale until a restart. An unknown version keeps the last known one.
+    """
+    dev_reg = dr.async_get(hass)
+    for device_id, purifier in entry.runtime_data.data.purifiers.items():
+        if purifier.mcu_version is None:
+            continue
+        device = dev_reg.async_get_device_by_identifier(
+            (DOMAIN, device_id), entry.entry_id
+        )
+        if device is not None and device.sw_version != purifier.mcu_version:
+            dev_reg.async_update_device(device.id, sw_version=purifier.mcu_version)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: CowayConfigEntry) -> bool:

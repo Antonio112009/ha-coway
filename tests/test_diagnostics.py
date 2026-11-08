@@ -10,7 +10,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_coway.const import DOMAIN
 from custom_components.ha_coway.diagnostics import async_get_config_entry_diagnostics
 
-from .conftest import MOCK_ENTRY_DATA
+from .conftest import (
+    MOCK_ENTRY_DATA,
+    make_purifier,
+    make_purifier_data,
+    setup_coway_integration,
+)
 
 
 async def test_diagnostics_redacts_sensitive_data(
@@ -39,3 +44,21 @@ async def test_diagnostics_redacts_sensitive_data(
     purifier = diagnostics["purifiers"]["purifier_1"]
     assert purifier["device_attr"]["device_id"] == "**REDACTED**"
     assert purifier["device_attr"]["place_id"] == "**REDACTED**"
+
+
+async def test_diagnostics_redacts_order_and_location_codes(
+    hass: HomeAssistant,
+) -> None:
+    """The order number and location codes never leave the instance."""
+    purifier = make_purifier()
+    purifier.device_attr.order_no = "ORD-12345"
+    purifier.device_attr.admdong_cd = "1168010100"
+    purifier.device_attr.station_cd = "111261"
+    entry, _ = await setup_coway_integration(hass, make_purifier_data(purifier))
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    device_attr = diagnostics["purifiers"]["purifier_1"]["device_attr"]
+    for key in ("order_no", "admdong_cd", "station_cd"):
+        assert device_attr[key] == "**REDACTED**", key
+    assert "ORD-12345" not in str(diagnostics)

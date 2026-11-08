@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+from unittest.mock import patch
+
 import pytest
 from homeassistant.components.fan import (
     ATTR_PERCENTAGE,
@@ -16,6 +19,10 @@ from homeassistant.components.fan import (
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util import dt as dt_util
+from pycoway import CowayError
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from .conftest import make_purifier, make_purifier_data, setup_coway_integration
 
@@ -503,3 +510,114 @@ async def test_fan_is_named_after_device(hass: HomeAssistant) -> None:
     state = hass.states.get(ENTITY_ID)
     assert state is not None
     assert state.attributes["friendly_name"] == "Living Room Purifier"
+
+
+# ── Chained commands (power on first) ────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _no_chain_delay():
+    """Skip the delay between chained commands."""
+    with patch("custom_components.ha_coway.fan.COMMAND_CHAIN_DELAY", 0):
+        yield
+
+
+async def test_turn_on_with_preset_powers_on_then_sets_preset(
+    hass: HomeAssistant,
+) -> None:
+    """turn_on with a preset sends power on, then the preset."""
+    data = make_purifier_data(make_purifier(is_on=False))
+    entry, mock_client = await setup_coway_integration(hass, data)
+
+    await hass.services.async_call(
+        FAN_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PRESET_MODE: "auto"},
+        blocking=True,
+    )
+
+    assert mock_client.async_set_power.call_args.kwargs["is_on"] is True
+    mock_client.async_set_auto_mode.assert_awaited_once()
+    state = hass.states.get(ENTITY_ID)
+    assert state.state == "on"
+    assert state.attributes["preset_mode"] == "auto"
+
+
+async def test_turn_on_with_percentage_powers_on_then_sets_speed(
+    hass: HomeAssistant,
+) -> None:
+    """turn_on with a percentage sends power on, then the speed."""
+    data = make_purifier_data(make_purifier(is_on=False))
+    entry, mock_client = await setup_coway_integration(hass, data)
+
+    await hass.services.async_call(
+        FAN_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PERCENTAGE: 100},
+        blocking=True,
+    )
+
+    assert mock_client.async_set_power.call_args.kwargs["is_on"] is True
+    assert mock_client.async_set_fan_speed.call_args.kwargs["speed"] == "3"
+    assert hass.states.get(ENTITY_ID).attributes["percentage"] == 100
+
+
+async def test_set_percentage_while_off_powers_on_first(hass: HomeAssistant) -> None:
+    """Setting a speed on a purifier that is off turns it on first."""
+    data = make_purifier_data(make_purifier(is_on=False))
+    entry, mock_client = await setup_coway_integration(hass, data)
+
+    await hass.services.async_call(
+        FAN_DOMAIN,
+        SERVICE_SET_PERCENTAGE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PERCENTAGE: 33},
+        blocking=True,
+    )
+
+    assert mock_client.async_set_power.call_args.kwargs["is_on"] is True
+    assert mock_client.async_set_fan_speed.call_args.kwargs["speed"] == "1"
+    assert hass.states.get(ENTITY_ID).state == "on"
+
+
+async def test_set_preset_while_off_powers_on_first(hass: HomeAssistant) -> None:
+    """Setting a preset on a purifier that is off turns it on first."""
+    data = make_purifier_data(make_purifier(is_on=False))
+    entry, mock_client = await setup_coway_integration(hass, data)
+
+    await hass.services.async_call(
+        FAN_DOMAIN,
+        SERVICE_SET_PRESET_MODE,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PRESET_MODE: "eco"},
+        blocking=True,
+    )
+
+    assert mock_client.async_set_power.call_args.kwargs["is_on"] is True
+    mock_client.async_set_eco_mode.assert_awaited_once()
+    state = hass.states.get(ENTITY_ID)
+    assert state.state == "on"
+    assert state.attributes["preset_mode"] == "eco"
+
+
+async def test_chained_command_failure_after_power_on(hass: HomeAssistant) -> None:
+    """If the second command fails, the error surfaces and a refresh follows.
+
+    The purifier did turn on, so it is reported on; the refresh then
+    replaces the optimistic state with what the cloud reports.
+    """
+    data = make_purifier_data(make_purifier(is_on=False))
+    entry, mock_client = await setup_coway_integration(hass, data)
+    mock_client.async_set_fan_speed.side_effect = CowayError("boom")
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            FAN_DOMAIN,
+            SERVICE_SET_PERCENTAGE,
+            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_PERCENTAGE: 100},
+            blocking=True,
+        )
+
+    assert mock_client.async_set_power.call_args.kwargs["is_on"] is True
+    refreshes = mock_client.async_get_purifiers_data.await_count
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=10))
+    await hass.async_block_till_done()
+    assert mock_client.async_get_purifiers_data.await_count > refreshes

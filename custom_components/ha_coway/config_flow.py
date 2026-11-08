@@ -6,14 +6,18 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlowWithReload,
 )
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    MAJOR_VERSION,
+    MINOR_VERSION,
+)
 from homeassistant.helpers.typing import UNDEFINED
 from pycoway import AuthError, CowayClient, CowayError, PasswordExpired
 
@@ -23,6 +27,17 @@ from .const import (
     DEFAULT_POLLING_INTERVAL,
     DOMAIN,
 )
+
+# Import the schema library under the name Home Assistant itself uses:
+# probatio from 2026.10, which is also what its type hints expect, and
+# voluptuous before that. From 2026.9 the voluptuous name is an alias to
+# probatio; on 2026.8, still supported by hacs.json, it is real voluptuous.
+# Gate on the version, since probatio being importable doesn't mean the
+# running release validates with it.
+if (MAJOR_VERSION, MINOR_VERSION) >= (2026, 10):
+    import probatio as vol
+else:
+    import voluptuous as vol  # type: ignore[no-redef]
 
 _LOGGER = logging.getLogger(__name__)
 

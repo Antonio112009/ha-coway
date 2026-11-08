@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import math
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
@@ -35,8 +34,6 @@ from .devices import (
     detect_family,
 )
 from .entity import CowayEntity, async_track_new_purifiers
-
-_LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1  # Serialize cloud control commands
 
@@ -260,13 +257,9 @@ class CowayFan(CowayEntity, FanEntity):
                 0,
             ),
         }
-        spec = mode_map.get(preset_mode)
-        if spec is None:
-            _LOGGER.warning(
-                "Unsupported preset mode '%s' for %s", preset_mode, self.entity_id
-            )
-            return
-        api_call, (auto, eco, night, rapid), fan_speed = spec
+        # Home Assistant rejects modes missing from preset_modes before
+        # calling the entity, so every mode that reaches here is mapped.
+        api_call, (auto, eco, night, rapid), fan_speed = mode_map[preset_mode]
 
         await self._async_send_command(f"set preset {preset_mode}", api_call(attr))
         purifier.auto_mode = auto
